@@ -45,6 +45,8 @@ import {
   clearAllReportsFromDB,
   fetchLeaveBalances,
   saveLeaveBalancesToDB,
+  fetchPoliciesFromDB,
+  savePoliciesToDB,
 } from "./apiClient";
 import AdminPanel from "./components/AdminPanel";
 import EmployeeComparison from "./components/EmployeeComparison";
@@ -227,9 +229,10 @@ export default function App() {
       setDbAvailable(dbOk);
       if (dbOk) {
         try {
-          const [dbReports, dbBalances] = await Promise.all([
+          const [dbReports, dbBalances, dbPolicies] = await Promise.all([
             fetchReports(),
             fetchLeaveBalances(),
+            fetchPoliciesFromDB(),
           ]);
           if (dbReports.length > 0) {
             setHistory(dbReports);
@@ -238,6 +241,10 @@ export default function App() {
           if (dbBalances.length > 0) {
             setLeaveBalances(dbBalances);
             localStorage.setItem("leave_balances", JSON.stringify(dbBalances));
+          }
+          if (dbPolicies) {
+            setPolicies(dbPolicies);
+            localStorage.setItem("work_policies", JSON.stringify(dbPolicies));
           }
         } catch (e) {
           console.error("[DB] Failed to load data:", e);
@@ -298,6 +305,7 @@ export default function App() {
   const savePolicies = (newPolicies: any) => {
     setPolicies(newPolicies);
     try { localStorage.setItem("work_policies", JSON.stringify(newPolicies)); } catch {}
+    if (dbAvailable) savePoliciesToDB(newPolicies).catch(() => {});
   };
 
   // Export to PDF
