@@ -270,9 +270,19 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Connect to MongoDB (non-blocking)
+  // Connect to MongoDB (non-blocking with retry)
   connectDB().then((db) => {
-    if (db) console.log("[DB] MongoDB ready");
+    if (db) {
+      console.log("[DB] MongoDB ready");
+    } else {
+      console.log("[DB] MongoDB not available, retrying in 10s...");
+      setTimeout(() => {
+        connectDB().then((db2) => {
+          if (db2) console.log("[DB] MongoDB connected on retry");
+          else console.log("[DB] MongoDB still unavailable");
+        });
+      }, 10000);
+    }
   }).catch((err) => {
     console.error("[DB] MongoDB connection error:", err.message);
   });

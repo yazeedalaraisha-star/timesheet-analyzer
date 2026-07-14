@@ -2,6 +2,7 @@ import { MongoClient, Db } from "mongodb";
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
+let connecting = false;
 
 export async function connectDB(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
@@ -10,16 +11,26 @@ export async function connectDB(): Promise<Db | null> {
     return null;
   }
 
+  if (db) return db;
+  if (connecting) return null;
+
+  connecting = true;
   try {
-    if (db) return db;
-    client = new MongoClient(uri);
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+    });
     await client.connect();
     db = client.db("timesheet_analyzer");
     console.log("[DB] Connected to MongoDB Atlas");
     return db;
   } catch (err: any) {
     console.error("[DB] Connection failed:", err.message);
+    client = null;
+    db = null;
     return null;
+  } finally {
+    connecting = false;
   }
 }
 

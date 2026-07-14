@@ -6,14 +6,18 @@ const router = Router();
 // Health check for DB
 router.get("/db-status", async (_req, res) => {
   const db = getDB();
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    return res.json({ connected: false, reason: "MONGODB_URI not set" });
+  }
   if (!db) {
-    return res.json({ connected: false });
+    return res.json({ connected: false, reason: "DB not initialized yet" });
   }
   try {
     await db.command({ ping: 1 });
     res.json({ connected: true });
-  } catch {
-    res.json({ connected: false });
+  } catch (err: any) {
+    res.json({ connected: false, reason: err.message });
   }
 });
 
