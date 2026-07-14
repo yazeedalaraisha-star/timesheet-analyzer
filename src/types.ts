@@ -91,3 +91,18 @@ export interface SavedReport {
   officialEndTime?: string;
   result: TimesheetAnalysisResult;
 }
+
+export interface LeaveBalanceEntry {
+  id: string;
+  year: number;
+  leaveType: string;
+  totalDays: number;
+  usedDays: number;
+  notes: string;
+}
+
+export interface EmployeeLeaveBalance {
+  employeeId: string;
+  employeeName: string;
+  balances: LeaveBalanceEntry[];
+}

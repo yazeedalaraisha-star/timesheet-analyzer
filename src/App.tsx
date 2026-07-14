@@ -31,14 +31,16 @@ import {
   Settings,
   FileDown,
   Layers,
+  CalendarDays,
 } from "lucide-react";
-import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem } from "./types";
+import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, EmployeeLeaveBalance } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import AdminPanel from "./components/AdminPanel";
 import EmployeeComparison from "./components/EmployeeComparison";
 import MonthlyTrends from "./components/MonthlyTrends";
+import LeaveBalance from "./components/LeaveBalance";
 import CustomPolicies from "./components/CustomPolicies";
 import { 
   ResponsiveContainer, 
@@ -157,8 +159,23 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  type ViewMode = "main" | "admin" | "compare" | "trends" | "policies";
+  type ViewMode = "main" | "admin" | "compare" | "trends" | "policies" | "leaves";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
+
+  // Leave balance state
+  const [leaveBalances, setLeaveBalances] = useState<EmployeeLeaveBalance[]>(() => {
+    try {
+      const stored = localStorage.getItem("leave_balances");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleUpdateLeaveBalances = (newBalances: EmployeeLeaveBalance[]) => {
+    setLeaveBalances(newBalances);
+    try { localStorage.setItem("leave_balances", JSON.stringify(newBalances)); } catch {}
+  };
 
   // Custom policies
   const [policies, setPolicies] = useState(() => {
@@ -261,9 +278,9 @@ export default function App() {
   };
 
   // Export to PDF
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!result) return;
-    exportToPDF(result, officialStartTime, officialEndTime);
+    await exportToPDF(result, officialStartTime, officialEndTime, lang);
   };
 
   // Handle selecting a report from admin/comparison view
@@ -752,6 +769,9 @@ export default function App() {
               <button onClick={() => setViewMode("policies")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "policies" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("policiesTitle")}>
                 <Settings className="h-3.5 w-3.5" />
               </button>
+              <button onClick={() => setViewMode("leaves")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "leaves" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="رصيد الإجازات">
+                <CalendarDays className="h-3.5 w-3.5" />
+              </button>
               <button onClick={() => setViewMode("admin")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "admin" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("adminTitle")}>
                 <BarChart3 className="h-3.5 w-3.5" />
               </button>
@@ -830,6 +850,13 @@ export default function App() {
           {viewMode === "policies" && (
             <div className="lg:col-span-12">
               <CustomPolicies policies={policies} onSave={savePolicies} />
+            </div>
+          )}
+
+          {/* Leave Balance View */}
+          {viewMode === "leaves" && (
+            <div className="lg:col-span-12">
+              <LeaveBalance balances={leaveBalances} onUpdate={handleUpdateLeaveBalances} />
             </div>
           )}
 
