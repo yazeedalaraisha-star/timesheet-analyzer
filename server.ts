@@ -6,6 +6,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Prevent crash on unhandled errors
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled Rejection:", reason);
+});
+
 // Simple in-memory rate limiter
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_MAX = 10; // max requests
@@ -204,10 +212,15 @@ async function callGeminiWithRetryAndFallback(
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
 
   // Set high JSON body limit to handle large screenshot base64 strings
   app.use(express.json({ limit: "50mb" }));
+
+  // Health check endpoint
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
   // API Endpoint for timesheet analysis
   app.post("/api/analyze", async (req, res) => {
@@ -763,4 +776,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("[FATAL] Server failed to start:", err);
+  process.exit(1);
+});
