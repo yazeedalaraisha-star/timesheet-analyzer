@@ -4,6 +4,8 @@ import helmet from "helmet";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { connectDB } from "./src/db";
+import apiRouter from "./src/routes";
 
 dotenv.config();
 
@@ -267,6 +269,16 @@ async function startServer() {
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // Connect to MongoDB (non-blocking)
+  connectDB().then((db) => {
+    if (db) console.log("[DB] MongoDB ready");
+  }).catch((err) => {
+    console.error("[DB] MongoDB connection error:", err.message);
+  });
+
+  // Mount API routes (reports, leave-balances, policies, db-status)
+  app.use("/api", apiRouter);
 
   // API Endpoint for timesheet analysis
   app.post("/api/analyze", async (req, res) => {

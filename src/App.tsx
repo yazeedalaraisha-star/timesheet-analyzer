@@ -37,6 +37,15 @@ import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, Employe
 import { exportToPDF } from "./utils/pdfExport";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
+import {
+  checkDBStatus,
+  fetchReports,
+  saveReportToDB,
+  deleteReportFromDB,
+  clearAllReportsFromDB,
+  fetchLeaveBalances,
+  saveLeaveBalancesToDB,
+} from "./apiClient";
 import AdminPanel from "./components/AdminPanel";
 import EmployeeComparison from "./components/EmployeeComparison";
 import MonthlyTrends from "./components/MonthlyTrends";
@@ -151,10 +160,11 @@ export default function App() {
   // UI filter state for daily log table
   const [filter, setFilter] = useState<"all" | "violations" | "regular" | "leaves">("all");
   
-  // Saved reports history state (stored in localStorage)
+  // Saved reports history state (stored in localStorage + DB)
   const [history, setHistory] = useState<SavedReport[]>([]);
   const [showHistory, setShowHistory] = useState<boolean>(false);
-  
+  const [dbAvailable, setDbAvailable] = useState<boolean>(false);
+
   // Tab/View selector for result
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
@@ -175,6 +185,7 @@ export default function App() {
   const handleUpdateLeaveBalances = (newBalances: EmployeeLeaveBalance[]) => {
     setLeaveBalances(newBalances);
     try { localStorage.setItem("leave_balances", JSON.stringify(newBalances)); } catch {}
+    if (dbAvailable) saveLeaveBalancesToDB(newBalances).catch(() => {});
   };
 
   // Custom policies
@@ -191,18 +202,6 @@ export default function App() {
   const [multiImages, setMultiImages] = useState<string[]>([]);
   const [multiResults, setMultiResults] = useState<TimesheetAnalysisResult[]>([]);
 
-  // Load history on mount from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("timesheet_reports_history");
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error("Error loading history from localStorage:", e);
-    }
-  }, []);
-
   // Inline row editing states
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editCheckIn, setEditCheckIn] = useState<string>("");
@@ -214,16 +213,37 @@ export default function App() {
   // Streaming progress state
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
-  // Load history on mount
+  // Load history on mount + check DB status
   useEffect(() => {
+    // Load from localStorage first (fast)
     try {
       const stored = localStorage.getItem("timesheet_reports_history");
-      if (stored) {
-        setHistory(JSON.parse(stored));
+      if (stored) setHistory(JSON.parse(stored));
+    } catch {}
+
+    // Then try to load from DB and sync
+    (async () => {
+      const dbOk = await checkDBStatus();
+      setDbAvailable(dbOk);
+      if (dbOk) {
+        try {
+          const [dbReports, dbBalances] = await Promise.all([
+            fetchReports(),
+            fetchLeaveBalances(),
+          ]);
+          if (dbReports.length > 0) {
+            setHistory(dbReports);
+            localStorage.setItem("timesheet_reports_history", JSON.stringify(dbReports));
+          }
+          if (dbBalances.length > 0) {
+            setLeaveBalances(dbBalances);
+            localStorage.setItem("leave_balances", JSON.stringify(dbBalances));
+          }
+        } catch (e) {
+          console.error("[DB] Failed to load data:", e);
+        }
       }
-    } catch (e) {
-      console.error("Error loading history from localStorage:", e);
-    }
+    })();
   }, []);
 
   // Save history helper (localStorage)
@@ -246,6 +266,7 @@ export default function App() {
       const updated = [newReport, ...history];
       setHistory(updated);
       localStorage.setItem("timesheet_reports_history", JSON.stringify(updated));
+      if (dbAvailable) saveReportToDB(newReport).catch(() => {});
     } catch (e) {
       console.error("Error saving to history:", e);
     }
@@ -258,6 +279,7 @@ export default function App() {
       const updated = history.filter(item => item.id !== id);
       setHistory(updated);
       localStorage.setItem("timesheet_reports_history", JSON.stringify(updated));
+      if (dbAvailable) deleteReportFromDB(id).catch(() => {});
     } catch (e) {
       console.error("Error deleting history item:", e);
     }
@@ -268,6 +290,7 @@ export default function App() {
     if (window.confirm("هل أنت متأكد من رغبتك في حذف جميع التقارير المحفوظة؟")) {
       setHistory([]);
       localStorage.removeItem("timesheet_reports_history");
+      if (dbAvailable) clearAllReportsFromDB().catch(() => {});
     }
   };
 
@@ -755,6 +778,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* DB Status Indicator */}
+            <div
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                dbAvailable
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60"
+                  : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+              }`}
+            >
+              {dbAvailable ? "MongoDB" : "Local"}
+            </div>
+
             {/* View Mode Navigation */}
             <div className="hidden sm:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
               <button onClick={() => setViewMode("main")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
