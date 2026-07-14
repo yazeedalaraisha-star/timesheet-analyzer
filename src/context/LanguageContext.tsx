@@ -1,0 +1,300 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+
+type Lang = "ar" | "en";
+
+interface LangContextType {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: (key: string) => string;
+}
+
+const translations: Record<Lang, Record<string, string>> = {
+  ar: {
+    appTitle: "محلل كشوفات الدوام الذكي",
+    appSubtitle: "أتمتة تحليل لقطات شاشة الحضور والغياب للغة العربية بالذكاء الاصطناعي",
+    uploadTitle: "تحميل كشف الدوام",
+    uploadDesc: "قم بسحب وإفلات لقطة شاشة جدول الحضور باللغة العربية أو تصفح ملفاتك",
+    dragDrop: "اسحب لقطة الشاشة إلى هنا",
+    dragDropHint: "تدعم الصور بصيغة PNG أو JPG أو JPEG",
+    chooseFile: "اختر ملف من جهازك",
+    removeImage: "إزالة الصورة",
+    changeImage: "غيّر الصورة",
+    workPolicies: "قواعد وolicies العمل",
+    startTime: "بداية الدوام (من):",
+    endTime: "نهاية الدوام (إلى):",
+    timeHint: "اختر الأوقات الرسمية للتحليل (بفواصل نصف ساعة)",
+    analyze: "حلل لقطة الشاشة الآن",
+    analyzing: "جاري المعالجة وقراءة الكشف...",
+    noImageError: "يرجى رفع لقطة شاشة لكشف الدوام أولاً.",
+    fileTypeError: "الرجاء اختيار ملف صورة صالح (PNG, JPEG, JPG).",
+    compressionError: "حدث خطأ أثناء ضغط الصورة:",
+    history: "السجلات المحفوظة",
+    savedReports: "التقارير السابقة المحفوظة",
+    noReports: "لا يوجد تقارير محفوظة حالياً في هذا المتصفح.",
+    clearAll: "مسح الكل",
+    deleteReport: "حذف هذا التقرير",
+    employeeInfo: "بطاقة معلومات الموظف",
+    employeeId: "الرقم الوظيفي",
+    jobTitle: "المسمى الوظيفي",
+    workPeriod: "فترة الدوام الرسمي المعتمد",
+    notAvailable: "غير متوفر",
+    print: "طباعة / تصدير PDF",
+    exportExcel: "تصدير لجدول Excel",
+    showJson: "معاينة JSON",
+    hideJson: "إخفاء بيانات JSON",
+    loadingProgress: "جاري المعالجة...",
+    emptyState: "في انتظار رفع كشف الدوام",
+    emptyStateDesc: "قم بتحميل لقطة شاشة لكشف الدوام من نظام الموارد البشرية لديكم لبدء معالجة واستخراج تقارير الحضور والإنصراف تلقائياً باستخدام الذكاء الاصطناعي.",
+    attendanceRate: "نسبة الدوام الصحيح (الالتزام)",
+    attendanceRateDesc: "الأيام الخالية من التأخير والغياب والخروج المبكر",
+    delayEarlyOut: "التأخير والخروج المبكر",
+    delayEarlyOutDesc: "إجمali دقائق التأخر الدخول والخروج المبكر",
+    absences: "غياب بدون عذر",
+    absencesDesc: "أيام العمل التي لا تحوي قيود أو إجازات",
+    leavesUsed: "الإجازات المستهلكة",
+    leavesUsedDesc: "إجمالي أيام الإجازات المغطاة رسمياً",
+    workHours: "ساعات العمل الفعلية",
+    workHoursDesc: "إجمالي ساعات الدوام الفعلي المحسوبة",
+    duplicateFp: "بصمات مكررة",
+    duplicateFpDesc: "أيام بها حركات دخول أو خروج مكررة",
+    lateSummary: "ملخص الأيام المتأخر فيها والخروج المبكر",
+    lateSummaryAuto: "تحليل تلقائي مع ربط التصاريح",
+    perfectRecord: "سجل ممتاز!",
+    perfectRecordDesc: "الموظف ملتزم تماماً بالدخول والخروج ولا توجد أي أيام متأخرة أو مغادرات غير معذورة.",
+    lateDays: "أيام التأخير في الحضور",
+    earlyOutDays: "أيام المغادرة والخروج المبكر",
+    noLate: "لا توجد أيام تأخير غير معذورة.",
+    noEarlyOut: "لا توجد مغادرات أو خروج مبكر غير معذور.",
+    duplicateFpAlert: "تنبيه: بصمات مكررة مكتشفة",
+    duplicateFpRisk: "مخاطرة",
+    duplicateFpDesc2: "تم اكتشاف حركات دخول أو خروج مكررة في بعض الأيام. قد يدل ذلك على مشاركة البصمة أو خطأ في التسجيل.",
+    chartTitle: "تحليل منحنى التأخير والخروج المبكر اليومي عبر الشهر",
+    chartDesc: "مخطط تفاعلي يوضح دقائق التأخير والخروج غير المعذورة لمراقبة اتجاهات التزام الموظف",
+    interactive: "تفاعلي",
+    reportTitle: "تقرير السجل التفصيلي",
+    reportDesc: "جدول ذكي للأيام التي تم تحليلها بالربط مع المغادرات والإجازات",
+    all: "الكل",
+    violations: "مخالفات وتأخير",
+    leavesFilter: "إجازات وتصاريح",
+    regular: "حضور منتظم",
+    tableDayDate: "اليوم والتاريخ",
+    tableCheckIn: "وقت الدخول",
+    tableCheckOut: "وقت الخروج",
+    tableWorkHours: "ساعات العمل",
+    tableStatus: "حالة الالتزام",
+    tableNotes: "ملاحظات التحليل",
+    tableEdit: "تعديل",
+    tableNoData: "لا توجد أيام مطابقة للفلتر المحدد.",
+    tableFooter: "كافة البيانات خضعت لعملية توحيد وتنظيف الأرقام الشرقية/الغربية رياضياً.",
+    tableTotal: "إجمالي الأيام المعروضة",
+    howItWorks: "كيف يعمل محلل كشوفات الدوام؟",
+    step1Title: "1. القراءة البصرية (OCR)",
+    step1Desc: "يقوم محرك Gemini 2.5 الفائق بتحليل لقطة الشاشة واستخراج جداول الحضور الأساسية، بالإضافة لجداول المغادرات والتصاريح والإجازات بنفس الهيكل المحدد للـ JSON.",
+    step2Title: "2. توحيد وتنظيف البيانات",
+    step2Desc: "تتحول جميع الأرقام الشرقية (٠، ١، ٢، ٣...) إلى أرقام غربية، وتُحول التواريخ والمدد الزمنية إلى كائنات رياضية لمقارنتها ومطابقتها بشكل آمن وحيادي.",
+    step3Title: "3. تطبيق القواعد البرمجية",
+    step3Desc: "يقارن وقت الوصول بوقت الدوام الرسمي. في حال وجود تأخر، يفحص جدول المغادرات المعتمدة لإلغاء المخالفة إذا كانت مغطاة، وإلا يُسجل كتأخير دقائق، ويُحسب الغياب التلقائي.",
+    footer: "أتمتة تحليل كشوفات الدوام باللغة العربية",
+    // Comparison
+    compareTitle: "مقارنة بين الموظفين",
+    compareDesc: "قارن تقارير حضور 여러 موظفين جنباً إلى جنب",
+    addReport: "إضافة تقرير للمقارنة",
+    noReportsToCompare: "لا توجد تقارير محفوظة للمقارنة. قم بتحليل كشف دوام أولاً.",
+    // Monthly Trends
+    trendsTitle: "الاتجاهات الشهرية",
+    trendsDesc: "تتبع أنماط الحضور عبر عدة أشهر",
+    month: "الشهر",
+    avgDelay: "متوسط التأخير (دق)",
+    totalAbsencesTrend: "إجمالي الغيابات",
+    complianceRate: "نسبة الالتزام",
+    noTrendsData: "لا توجد بيانات كافية لعرض الاتجاهات. قم بتحليل عدة تقارير عبر أشهر مختلفة.",
+    // Custom Policies
+    policiesTitle: "سياسات العمل المخصصة",
+    gracePeriod: "فترة السماح (دقائق)",
+    gracePeriodDesc: "دقائق إضافية بعد موعد الدوام يُسمح بالدخول بدون تأخير",
+    overtimeThreshold: "عتبة العمل الإضافي (ساعات)",
+    overtimeThresholdDesc: "الساعات الإضافية فوق الدوام الرسمي تُحسب كعمل إضافي",
+    maxDelaysAllowed: "الحد الأقصى للتأخيرات الشهرية",
+    maxDelaysAllowedDesc: "عدد مرات التأخير المسموح بها شهرياً قبل اتخاذ إجراء",
+    savePolicies: "حفظ السياسات",
+    policiesSaved: "تم حفظ السياسات بنجاح!",
+    // Admin
+    adminTitle: "لوحة التحكم",
+    adminDesc: "عرض وإدارة جميع التقارير المحفوظة",
+    totalReports: "إجمالي التقارير",
+    totalEmployees: "إجمالي الموظفين",
+    avgCompliance: "متوسط نسبة الالتزام",
+    recentReports: "التقارير الأخيرة",
+    noAdminData: "لا توجد تقارير محفوظة في النظام.",
+    viewReport: "عرض التقرير",
+    deleteReportAdmin: "حذف",
+    backToMain: "العودة للرئيسية",
+    // Dark mode
+    darkMode: "الوضع الداكن",
+    lightMode: "الوضع الفاتح",
+    // Language
+    switchLang: "English",
+  },
+  en: {
+    appTitle: "Smart Timesheet Analyzer",
+    appSubtitle: "Automated Arabic attendance screenshot analysis with AI",
+    uploadTitle: "Upload Timesheet",
+    uploadDesc: "Drag & drop an Arabic attendance screenshot or browse your files",
+    dragDrop: "Drop your screenshot here",
+    dragDropHint: "Supports PNG, JPG, JPEG images",
+    chooseFile: "Choose a file from your device",
+    removeImage: "Remove image",
+    changeImage: "Change image",
+    workPolicies: "Work Policies",
+    startTime: "Start time:",
+    endTime: "End time:",
+    timeHint: "Select official analysis times (30-min intervals)",
+    analyze: "Analyze screenshot now",
+    analyzing: "Processing and reading timesheet...",
+    noImageError: "Please upload a timesheet screenshot first.",
+    fileTypeError: "Please select a valid image file (PNG, JPEG, JPG).",
+    compressionError: "Error compressing image:",
+    history: "Saved Records",
+    savedReports: "Previously Saved Reports",
+    noReports: "No saved reports in this browser.",
+    clearAll: "Clear all",
+    deleteReport: "Delete this report",
+    employeeInfo: "Employee Information",
+    employeeId: "Employee ID",
+    jobTitle: "Job Title",
+    workPeriod: "Official Work Period",
+    notAvailable: "N/A",
+    print: "Print / Export PDF",
+    exportExcel: "Export to Excel",
+    showJson: "Show JSON",
+    hideJson: "Hide JSON",
+    loadingProgress: "Processing...",
+    emptyState: "Waiting for timesheet upload",
+    emptyStateDesc: "Upload a timesheet screenshot from your HR system to automatically extract attendance reports using AI.",
+    attendanceRate: "Correct Attendance Rate",
+    attendanceRateDesc: "Days without delays, absences, or early exits",
+    delayEarlyOut: "Delays & Early Exits",
+    delayEarlyOutDesc: "Total delay and early exit minutes",
+    absences: "Unexcused Absences",
+    absencesDesc: "Working days without permissions or leaves",
+    leavesUsed: "Leaves Used",
+    leavesUsedDesc: "Total officially covered leave days",
+    workHours: "Actual Work Hours",
+    workHoursDesc: "Total calculated actual work hours",
+    duplicateFp: "Duplicate Fingerprints",
+    duplicateFpDesc: "Days with duplicate check-in/out",
+    lateSummary: "Late Days & Early Exit Summary",
+    lateSummaryAuto: "Auto analysis with permission linking",
+    perfectRecord: "Excellent record!",
+    perfectRecordDesc: "Employee is fully compliant with no late days or unexcused early exits.",
+    lateDays: "Late arrival days",
+    earlyOutDays: "Early exit & permission days",
+    noLate: "No unexcused late days.",
+    noEarlyOut: "No unexcused early exits.",
+    duplicateFpAlert: "Alert: Duplicate fingerprints detected",
+    duplicateFpRisk: "Risk",
+    duplicateFpDesc2: "Duplicate check-in/out activities detected. May indicate fingerprint sharing or recording error.",
+    chartTitle: "Daily Delay & Early Exit Trend Analysis",
+    chartDesc: "Interactive chart showing unexcused delay and early exit minutes",
+    interactive: "Interactive",
+    reportTitle: "Detailed Record Report",
+    reportDesc: "Smart table of analyzed days linked with permissions and leaves",
+    all: "All",
+    violations: "Violations & delays",
+    leavesFilter: "Leaves & permissions",
+    regular: "Regular attendance",
+    tableDayDate: "Day & Date",
+    tableCheckIn: "Check In",
+    tableCheckOut: "Check Out",
+    tableWorkHours: "Work Hours",
+    tableStatus: "Compliance Status",
+    tableNotes: "Analysis Notes",
+    tableEdit: "Edit",
+    tableNoData: "No days match the selected filter.",
+    tableFooter: "All data has been normalized and cleaned (Eastern/Western numerals).",
+    tableTotal: "Total displayed days",
+    howItWorks: "How does the Timesheet Analyzer work?",
+    step1Title: "1. Visual Reading (OCR)",
+    step1Desc: "Gemini 2.5 analyzes the screenshot and extracts attendance tables, permissions, and leaves in the specified JSON structure.",
+    step2Title: "2. Data Normalization",
+    step2Desc: "Eastern Arabic numerals (٠-٩) are converted to Western, and dates/durations are converted to mathematical objects for safe comparison.",
+    step3Title: "3. Rule Application",
+    step3Desc: "Arrival time is compared to official hours. If late, the permissions table is checked to excuse the violation. Otherwise it's logged as delay minutes, and absences are calculated automatically.",
+    footer: "Automated Arabic Timesheet Analysis",
+    compareTitle: "Employee Comparison",
+    compareDesc: "Compare attendance reports of multiple employees side by side",
+    addReport: "Add report to compare",
+    noReportsToCompare: "No saved reports to compare. Analyze a timesheet first.",
+    trendsTitle: "Monthly Trends",
+    trendsDesc: "Track attendance patterns across multiple months",
+    month: "Month",
+    avgDelay: "Avg delay (min)",
+    totalAbsencesTrend: "Total absences",
+    complianceRate: "Compliance rate",
+    noTrendsData: "Not enough data for trends. Analyze reports across different months.",
+    policiesTitle: "Custom Work Policies",
+    gracePeriod: "Grace period (minutes)",
+    gracePeriodDesc: "Extra minutes after official start allowed without marking late",
+    overtimeThreshold: "Overtime threshold (hours)",
+    overtimeThresholdDesc: "Hours beyond official end counted as overtime",
+    maxDelaysAllowed: "Max monthly delays allowed",
+    maxDelaysAllowedDesc: "Number of allowed late arrivals per month before action",
+    savePolicies: "Save policies",
+    policiesSaved: "Policies saved successfully!",
+    adminTitle: "Admin Panel",
+    adminDesc: "View and manage all saved reports",
+    totalReports: "Total Reports",
+    totalEmployees: "Total Employees",
+    avgCompliance: "Avg Compliance Rate",
+    recentReports: "Recent Reports",
+    noAdminData: "No saved reports in the system.",
+    viewReport: "View Report",
+    deleteReportAdmin: "Delete",
+    backToMain: "Back to main",
+    darkMode: "Dark Mode",
+    lightMode: "Light Mode",
+    switchLang: "العربية",
+  },
+};
+
+const LanguageContext = createContext<LangContextType>({
+  lang: "ar",
+  setLang: () => {},
+  t: (key) => key,
+});
+
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const [lang, setLangState] = useState<Lang>(() => {
+    try {
+      return (localStorage.getItem("app_lang") as Lang) || "ar";
+    } catch {
+      return "ar";
+    }
+  });
+
+  const setLang = (l: Lang) => {
+    setLangState(l);
+    try { localStorage.setItem("app_lang", l); } catch {}
+    document.documentElement.lang = l;
+    document.documentElement.dir = l === "ar" ? "rtl" : "ltr";
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  }, [lang]);
+
+  const t = (key: string): string => {
+    return translations[lang]?.[key] || translations.ar[key] || key;
+  };
+
+  return (
+    <LanguageContext.Provider value={{ lang, setLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+}
+
+export function useLang() {
+  return useContext(LanguageContext);
+}

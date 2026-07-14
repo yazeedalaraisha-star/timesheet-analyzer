@@ -1,10 +1,14 @@
 import express from "express";
 import path from "path";
+import helmet from "helmet";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+const MAX_IMAGE_SIZE_MB = 10;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 // Prevent crash on unhandled errors
 process.on("uncaughtException", (err) => {
@@ -214,8 +218,31 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
+  // Security headers
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
+
   // Set high JSON body limit to handle large screenshot base64 strings
   app.use(express.json({ limit: "50mb" }));
+
+  // Optional API key authentication middleware
+  const API_KEY = process.env.API_KEY;
+  if (API_KEY) {
+    app.use("/api", (req, res, next) => {
+      const providedKey = req.headers["x-api-key"] || req.query.api_key;
+      if (!providedKey || providedKey !== API_KEY) {
+        return res.status(401).json({
+          error: "مفتاح الوصول (API Key) غير صالح أو مفقود."
+        });
+      }
+      next();
+    });
+    console.log("[Security] API key authentication enabled for /api routes");
+  } else {
+    console.log("[Security] No API_KEY set — API endpoints are open");
+  }
 
   // Health check endpoint
   app.get("/health", (_req, res) => {
@@ -248,6 +275,14 @@ async function startServer() {
           mimeType = matches[1];
           base64Data = matches[2];
         }
+      }
+
+      // Validate image size (base64 is ~33% larger than raw bytes)
+      const estimatedSizeBytes = Math.ceil((base64Data.length * 3) / 4);
+      if (estimatedSizeBytes > MAX_IMAGE_SIZE_BYTES) {
+        return res.status(413).json({
+          error: `حجم الصورة يتجاوز الحد المسموح (${MAX_IMAGE_SIZE_MB} ميغابايت). يرجى تصغير الصورة أو ضغطها قبل الرفع.`
+        });
       }
 
       // Lazy load Gemini API client
@@ -753,6 +788,446 @@ async function startServer() {
       return res.status(500).json({
         error: error.message || "حدث خطأ غير متوقع أثناء معالجة كشف الدوام."
       });
+    }
+  });
+
+  // Streaming analysis endpoint (SSE)
+  app.post("/api/analyze/stream", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ 
+          error: "تم تجاوز الحد المسموح من الطلبات. يرجى الانتظار دقيقة واحدة ثم المحاولة مرة أخرى." 
+        });
+      }
+
+      const { image, officialStartTime = "08:00:00", officialEndTime = "17:00:00" } = req.body;
+      
+      if (!image) {
+        return res.status(400).json({ error: "الرجاء توفير لقطة الشاشة في الطلب (صيغة Base64)." });
+      }
+
+      let base64Data = image;
+      let mimeType = "image/png";
+      if (image.startsWith("data:")) {
+        const matches = image.match(/^data:([^;]+);base64,(.*)$/);
+        if (matches && matches.length === 3) {
+          mimeType = matches[1];
+          base64Data = matches[2];
+        }
+      }
+
+      const estimatedSizeBytes = Math.ceil((base64Data.length * 3) / 4);
+      if (estimatedSizeBytes > MAX_IMAGE_SIZE_BYTES) {
+        return res.status(413).json({
+          error: `حجم الصورة يتجاوز الحد المسموح (${MAX_IMAGE_SIZE_MB} ميغابايت).`
+        });
+      }
+
+      // Set up SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+
+      const sendEvent = (event: string, data: any) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      sendEvent("progress", { step: "start", message: "جاري تحليل الصورة..." });
+
+      const ai = getGeminiClient();
+      sendEvent("progress", { step: "ocr", message: "جاري قراءة البيانات من لقطة الشاشة..." });
+
+      const imagePart = {
+        inlineData: { mimeType, data: base64Data },
+      };
+
+      const promptPart = {
+        text: `أنت خبير محترف في قراءة الجداول وكشوفات الدوام من لقطات الشاشة باللغة العربية واستخراج البيانات منها بدقة بالغة.
+كشف الدوام المرفق باللغة العربية يحتوي على:
+1. رأس الصفحة (Employee Info): رقم الموظف (id)، اسم الموظف الكامل (name)، المسمى الوظيفي أو الوظيفة (role).
+2. الجدول الرئيسي لحركات الحضور والخروج (Attendance Records): لكل حركة هناك يوم (day)، تاريخ (date)، وقت الحركة (time)، ونوع الحركة (type) الذي يجب أن يكون إما 'حضور' أو 'خروج'.
+3. جدول المغادرات/التصاريح خلال الشهر (Permissions): يحتوي على تاريخ المغادرة (date)، وقت بداية المغادرة (start_time)، ووقت نهاية المغادرة (end_time).
+4. جدول الإجازات خلال الشهر (Leaves): يحتوي على تاريخ البداية (start_date)، تاريخ الانتهاء (end_date)، ونوع الإجازة (leave_type) مثل سنوية، مرضية، إلخ.
+
+قم بتحليل الصورة المرفقة واستخراج كافة التفاصيل بدقة متناهية وإرجاعها في شكل هيكل JSON مطابق تماماً للمخطط المحدّد (Schema). تأكد من استخراج كافة التواريخ بصيغة DD-MM-YYYY والأوقات بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة.`,
+      };
+
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          employee_info: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING, description: "رقم الموظف" },
+              name: { type: Type.STRING, description: "اسم الموظف الكامل" },
+              role: { type: Type.STRING, description: "المسمى الوظيفي أو الوظيفة" }
+            },
+            required: ["id", "name", "role"]
+          },
+          attendance_records: {
+            type: Type.ARRAY,
+            description: "قائمة بكافة حركات الحضور والخروج المستخرجة من الجدول الرئيسي",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                day: { type: Type.STRING, description: "اسم اليوم باللغة العربية" },
+                date: { type: Type.STRING, description: "التاريخ بصيغة DD-MM-YYYY" },
+                time: { type: Type.STRING, description: "الوقت بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة" },
+                type: { type: Type.STRING, description: "نوع الحركة: 'حضور' أو 'خروج'" }
+              },
+              required: ["day", "date", "time", "type"]
+            }
+          },
+          permissions: {
+            type: Type.ARRAY,
+            description: "قائمة بالمغادرات والتصاريح",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                date: { type: Type.STRING, description: "تاريخ المغادرة بصيغة DD-MM-YYYY" },
+                start_time: { type: Type.STRING, description: "وقت بداية المغادرة" },
+                end_time: { type: Type.STRING, description: "وقت نهاية المغادرة" }
+              },
+              required: ["date", "start_time", "end_time"]
+            }
+          },
+          leaves: {
+            type: Type.ARRAY,
+            description: "قائمة بالإجازات الرسمية",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                start_date: { type: Type.STRING, description: "تاريخ بداية الإجازة" },
+                end_date: { type: Type.STRING, description: "تاريخ نهاية الإجازة" },
+                leave_type: { type: Type.STRING, description: "نوع الإجازة" }
+              },
+              required: ["start_date", "end_date", "leave_type"]
+            }
+          }
+        },
+        required: ["employee_info", "attendance_records", "permissions", "leaves"]
+      };
+
+      sendEvent("progress", { step: "analyze", message: "جاري تحليل البيانات واستخراج النتائج..." });
+
+      const response = await callGeminiWithRetryAndFallback(ai, imagePart, promptPart, schema);
+
+      sendEvent("progress", { step: "process", message: "جاري معالجة البيانات وحساب الإحصائيات..." });
+
+      let extractedText = response.text || "{}";
+      if (extractedText.includes("```json")) {
+        extractedText = extractedText.split("```json")[1].split("```")[0];
+      } else if (extractedText.includes("```")) {
+        extractedText = extractedText.split("```")[1].split("```")[0];
+      }
+      const rawExtracted = JSON.parse(extractedText.trim());
+
+      // --- Business Logic (same as non-streaming) ---
+      const employee_info = {
+        id: cleanArabicNumbers(rawExtracted.employee_info?.id || "").trim() || "غير معروف",
+        name: (rawExtracted.employee_info?.name || "غير معروف").trim(),
+        role: (rawExtracted.employee_info?.role || "غير معروف").trim()
+      };
+
+      const officialStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600);
+      const officialEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600);
+
+      const attendanceList = (rawExtracted.attendance_records || []).map((rec: any) => ({
+        day: (rec.day || "").trim(),
+        date: cleanArabicNumbers(rec.date || "").trim(),
+        time: cleanArabicNumbers(rec.time || "").trim(),
+        type: (rec.type || "").trim()
+      }));
+
+      const permissionsList = (rawExtracted.permissions || []).map((perm: any) => ({
+        date: cleanArabicNumbers(perm.date || "").trim(),
+        start_time: cleanArabicNumbers(perm.start_time || "").trim(),
+        end_time: cleanArabicNumbers(perm.end_time || "").trim()
+      }));
+
+      const leavesList = (rawExtracted.leaves || []).map((lv: any) => ({
+        start_date: cleanArabicNumbers(lv.start_date || "").trim(),
+        end_date: cleanArabicNumbers(lv.end_date || "").trim(),
+        leave_type: (lv.leave_type || "إجازة").trim()
+      }));
+
+      const attendanceByDate: Record<string, { checkIn: any; checkOut: any; checkInCount: number; checkOutCount: number }> = {};
+      attendanceList.forEach((rec: any) => {
+        const parsedD = parseDate(rec.date);
+        if (!parsedD) return;
+        const dateKey = formatDateKey(parsedD);
+        if (!attendanceByDate[dateKey]) {
+          attendanceByDate[dateKey] = { checkIn: null, checkOut: null, checkInCount: 0, checkOutCount: 0 };
+        }
+        const normType = rec.type === "حضور" ? "حضور" : rec.type === "خروج" ? "خروج" : "";
+        if (!normType) return;
+        if (normType === "حضور") {
+          attendanceByDate[dateKey].checkInCount++;
+          if (!attendanceByDate[dateKey].checkIn) {
+            attendanceByDate[dateKey].checkIn = rec;
+          } else {
+            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkIn.time) || 999999;
+            const newSec = parseTimeToSeconds(rec.time) || 999999;
+            if (newSec < currentSec) attendanceByDate[dateKey].checkIn = rec;
+          }
+        } else if (normType === "خروج") {
+          attendanceByDate[dateKey].checkOutCount++;
+          if (!attendanceByDate[dateKey].checkOut) {
+            attendanceByDate[dateKey].checkOut = rec;
+          } else {
+            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkOut.time) || 0;
+            const newSec = parseTimeToSeconds(rec.time) || 0;
+            if (newSec > currentSec) attendanceByDate[dateKey].checkOut = rec;
+          }
+        }
+      });
+
+      const isDateInLeave = (date: Date): { inLeave: boolean; type: string } => {
+        const dTime = date.getTime();
+        for (const lv of leavesList) {
+          const startD = parseDate(lv.start_date);
+          const endD = parseDate(lv.end_date);
+          if (startD && endD) {
+            const sTime = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime();
+            const eTime = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime();
+            const curTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+            if (curTime >= sTime && curTime <= eTime) {
+              return { inLeave: true, type: lv.leave_type };
+            }
+          }
+        }
+        return { inLeave: false, type: "" };
+      };
+
+      let startDate = new Date();
+      let endDate = new Date();
+      let hasRecords = false;
+      const validParsedDates = attendanceList
+        .map((rec: any) => parseDate(rec.date))
+        .filter((d: Date | null) => d !== null) as Date[];
+
+      if (validParsedDates.length > 0) {
+        hasRecords = true;
+        let minTime = validParsedDates[0].getTime();
+        let maxTime = validParsedDates[0].getTime();
+        validParsedDates.forEach(d => {
+          const t = d.getTime();
+          if (t < minTime) minTime = t;
+          if (t > maxTime) maxTime = t;
+        });
+        startDate = new Date(minTime);
+        endDate = new Date(maxTime);
+      } else {
+        startDate = new Date();
+        startDate.setDate(1);
+      }
+
+      const maxDays = 31;
+      const daysCount = Math.min(maxDays, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1);
+
+      const dailyReports: any[] = [];
+      let totalDelayMinutes = 0;
+      let totalEarlyOutMinutes = 0;
+      let totalAbsences = 0;
+      let totalLeavesUsed = 0;
+      let totalWorkingDays = 0;
+      let perfectComplianceDays = 0;
+      let totalWorkHours = 0;
+      const lateDaysSummary: any[] = [];
+      const duplicateFingerprintsSummary: any[] = [];
+      let totalDuplicateFingerprintDays = 0;
+
+      for (let i = 0; i < daysCount; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        const dateKey = formatDateKey(currentDate);
+        const dayOfWeek = currentDate.getDay();
+        const dayArabic = getArabicDayName(currentDate);
+        const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+        if (!isWeekend) totalWorkingDays++;
+
+        const attendance = attendanceByDate[dateKey];
+        const { inLeave, type: leaveType } = isDateInLeave(currentDate);
+        let hasPermission = false;
+        let permissionDetails = "";
+        for (const perm of permissionsList) {
+          const pDate = parseDate(perm.date);
+          if (pDate && formatDateKey(pDate) === dateKey) {
+            hasPermission = true;
+            permissionDetails = `مغادرة من ${perm.start_time} إلى ${perm.end_time}`;
+            break;
+          }
+        }
+
+        let statusText = "منتظم";
+        let statusStyle = "success";
+        let delayMinutes = 0;
+        let earlyOutMinutes = 0;
+        let note = "";
+        const checkInTime = attendance?.checkIn?.time || null;
+        const checkOutTime = attendance?.checkOut?.time || null;
+
+        if (attendance) {
+          let hasViolation = false;
+          if (attendance.checkInCount > 1) note += `تنبيه: تم رصد حركتي دخول (${attendance.checkInCount} مرات). `;
+          if (attendance.checkOutCount > 1) note += `تنبيه: تم رصد حركتي خروج (${attendance.checkOutCount} مرات). `;
+
+          if (checkInTime) {
+            const checkInSec = parseTimeToSeconds(checkInTime);
+            if (checkInSec !== null && checkInSec > officialStartSec) {
+              let excusedByPermission = false;
+              let coveringPermission: any = null;
+              for (const perm of permissionsList) {
+                const pDate = parseDate(perm.date);
+                if (pDate && formatDateKey(pDate) === dateKey) {
+                  const pStartSec = parseTimeToSeconds(perm.start_time);
+                  const pEndSec = parseTimeToSeconds(perm.end_time);
+                  if (pStartSec !== null && pEndSec !== null && pStartSec <= officialStartSec && pEndSec >= checkInSec) {
+                    excusedByPermission = true;
+                    coveringPermission = perm;
+                    break;
+                  }
+                }
+              }
+              if (excusedByPermission) {
+                note += `مغادرة رسمية من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
+              } else {
+                delayMinutes = Math.ceil((checkInSec - officialStartSec) / 60);
+                totalDelayMinutes += delayMinutes;
+                hasViolation = true;
+                note += "تأخير غير معذور. ";
+                lateDaysSummary.push({ date: formatDateDisplay(currentDate), dayName: dayArabic, delayMinutes, time: checkInTime });
+              }
+            }
+          } else {
+            hasViolation = true;
+            note += "لم يتم رصد حركة دخول. ";
+          }
+
+          if (checkOutTime) {
+            const checkOutSec = parseTimeToSeconds(checkOutTime);
+            if (checkOutSec !== null && checkOutSec < officialEndSec) {
+              let excusedByPermission = false;
+              for (const perm of permissionsList) {
+                const pDate = parseDate(perm.date);
+                if (pDate && formatDateKey(pDate) === dateKey) {
+                  const pStartSec = parseTimeToSeconds(perm.start_time);
+                  const pEndSec = parseTimeToSeconds(perm.end_time);
+                  if (pStartSec !== null && pEndSec !== null && pStartSec <= checkOutSec && pEndSec >= officialEndSec) {
+                    excusedByPermission = true;
+                    break;
+                  }
+                }
+              }
+              if (!excusedByPermission) {
+                earlyOutMinutes = Math.ceil((officialEndSec - checkOutSec) / 60);
+                totalEarlyOutMinutes += earlyOutMinutes;
+                hasViolation = true;
+                note += `خرج مبكراً بـ ${earlyOutMinutes} دقيقة. `;
+              }
+            }
+          } else {
+            note += "لم يتم رصد حركة خروج. ";
+          }
+
+          if (hasViolation) {
+            statusStyle = "danger";
+            const parts = [];
+            if (delayMinutes > 0) parts.push(`تأخير ${delayMinutes} د`);
+            if (earlyOutMinutes > 0) parts.push(`خروج مبكر ${earlyOutMinutes} د`);
+            if (parts.length === 0) parts.push("غير ملتزم");
+            statusText = parts.join(" و ");
+          } else {
+            statusStyle = "success";
+            statusText = "حضور منتظم";
+            if (!isWeekend) perfectComplianceDays++;
+          }
+        } else {
+          if (isWeekend) {
+            statusText = "عطلة نهاية الأسبوع";
+            statusStyle = "secondary";
+          } else if (inLeave) {
+            statusText = `إجازة رسمية (${leaveType})`;
+            statusStyle = "warning";
+            totalLeavesUsed++;
+            perfectComplianceDays++;
+            note = `مغطى بإجازة: ${leaveType}`;
+          } else {
+            statusText = "غياب بدون عذر";
+            statusStyle = "danger";
+            totalAbsences++;
+            note = "لم يتم رصد أي حركات حضور أو خروج";
+          }
+        }
+
+        let dailyWorkHours = 0;
+        if (checkInTime && checkOutTime) {
+          const inSec = parseTimeToSeconds(checkInTime);
+          const outSec = parseTimeToSeconds(checkOutTime);
+          if (inSec !== null && outSec !== null && outSec > inSec) {
+            dailyWorkHours = Number(((outSec - inSec) / 3600).toFixed(2));
+            totalWorkHours += dailyWorkHours;
+          }
+        }
+
+        dailyReports.push({
+          date: formatDateDisplay(currentDate),
+          dayName: dayArabic,
+          checkIn: checkInTime,
+          checkOut: checkOutTime,
+          checkInCount: attendance?.checkInCount || 0,
+          checkOutCount: attendance?.checkOutCount || 0,
+          hasLeave: inLeave,
+          leaveType: inLeave ? leaveType : null,
+          hasPermission,
+          permissionDetails,
+          workHours: dailyWorkHours,
+          status: statusText,
+          statusStyle,
+          delayMinutes,
+          earlyOutMinutes,
+          note: note.trim(),
+          isWeekend
+        });
+      }
+
+      for (const report of dailyReports) {
+        if (report.checkInCount > 1 || report.checkOutCount > 1) {
+          totalDuplicateFingerprintDays++;
+          const details: string[] = [];
+          if (report.checkInCount > 1) details.push(`دخول ${report.checkInCount} مرات`);
+          if (report.checkOutCount > 1) details.push(`خروج ${report.checkOutCount} مرات`);
+          duplicateFingerprintsSummary.push({ date: report.date, dayName: report.dayName, checkInCount: report.checkInCount, checkOutCount: report.checkOutCount, details: details.join(" و ") });
+        }
+      }
+
+      let correctAttendancePercentage = 100;
+      if (totalWorkingDays > 0) {
+        correctAttendancePercentage = Math.round((perfectComplianceDays / totalWorkingDays) * 100);
+      }
+
+      const results = {
+        employee_info,
+        kpis: { totalDelayMinutes, totalEarlyOutMinutes, totalAbsences, totalLeavesUsed, totalWorkingDays, perfectComplianceDays, correctAttendancePercentage, totalWorkHours: Number(totalWorkHours.toFixed(1)), totalDuplicateFingerprintDays },
+        lateDaysSummary,
+        duplicateFingerprintsSummary,
+        daily_report: dailyReports,
+        extracted_data: rawExtracted
+      };
+
+      sendEvent("complete", results);
+      res.end();
+
+    } catch (error: any) {
+      console.error("Stream Analysis Error:", error);
+      const sendEvent = (event: string, data: any) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      sendEvent("error", { message: error.message || "حدث خطأ غير متوقع أثناء معالجة كشف الدوام." });
+      res.end();
     }
   });
 

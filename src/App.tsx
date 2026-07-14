@@ -22,9 +22,24 @@ import {
   Download,
   AlertCircle,
   Info,
-  Fingerprint
+  Fingerprint,
+  Moon,
+  Sun,
+  Globe,
+  GitCompareArrows,
+  BarChart3,
+  Settings,
+  FileDown,
+  Layers,
 } from "lucide-react";
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem } from "./types";
+import { exportToPDF } from "./utils/pdfExport";
+import { useLang } from "./context/LanguageContext";
+import { useTheme } from "./context/ThemeContext";
+import AdminPanel from "./components/AdminPanel";
+import EmployeeComparison from "./components/EmployeeComparison";
+import MonthlyTrends from "./components/MonthlyTrends";
+import CustomPolicies from "./components/CustomPolicies";
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -33,7 +48,10 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  Legend 
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
 const getStatusExplanation = (row: any, officialStartTime: string, officialEndTime: string): string => {
@@ -73,6 +91,37 @@ const getStatusExplanation = (row: any, officialStartTime: string, officialEndTi
   return explanation.trim();
 };
 
+const compressImage = (file: File, maxWidth = 1920, quality = 0.82): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(reader.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => reject(new Error("فشل تحميل الصورة للضغط"));
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => reject(new Error("فشل قراءة ملف الصورة"));
+    reader.readAsDataURL(file);
+  });
+};
+
 const TIME_OPTIONS = Array.from({ length: 48 }).map((_, index) => {
   const hours = Math.floor(index / 2);
   const minutes = (index % 2) * 30;
@@ -82,6 +131,9 @@ const TIME_OPTIONS = Array.from({ length: 48 }).map((_, index) => {
 });
 
 export default function App() {
+  const { lang, setLang, t } = useLang();
+  const { dark, toggle: toggleTheme } = useTheme();
+  
   // State variables
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -101,6 +153,36 @@ export default function App() {
   // Tab/View selector for result
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
+  // View modes
+  type ViewMode = "main" | "admin" | "compare" | "trends" | "policies";
+  const [viewMode, setViewMode] = useState<ViewMode>("main");
+
+  // Custom policies
+  const [policies, setPolicies] = useState(() => {
+    try {
+      const stored = localStorage.getItem("work_policies");
+      return stored ? JSON.parse(stored) : { gracePeriod: 0, overtimeThreshold: 0, maxDelaysAllowed: 10 };
+    } catch {
+      return { gracePeriod: 0, overtimeThreshold: 0, maxDelaysAllowed: 10 };
+    }
+  });
+
+  // Multiple images state
+  const [multiImages, setMultiImages] = useState<string[]>([]);
+  const [multiResults, setMultiResults] = useState<TimesheetAnalysisResult[]>([]);
+
+  // Load history on mount from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("timesheet_reports_history");
+      if (stored) {
+        setHistory(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Error loading history from localStorage:", e);
+    }
+  }, []);
+
   // Inline row editing states
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editCheckIn, setEditCheckIn] = useState<string>("");
@@ -108,6 +190,9 @@ export default function App() {
   const [editHasLeave, setEditHasLeave] = useState<boolean>(false);
   const [editLeaveType, setEditLeaveType] = useState<string>("");
   const [editHasPermission, setEditHasPermission] = useState<boolean>(false);
+
+  // Streaming progress state
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
   // Load history on mount
   useEffect(() => {
@@ -121,7 +206,7 @@ export default function App() {
     }
   }, []);
 
-  // Save history helper
+  // Save history helper (localStorage)
   const saveToHistory = (newResult: TimesheetAnalysisResult) => {
     try {
       const newReport: SavedReport = {
@@ -166,30 +251,54 @@ export default function App() {
     }
   };
 
+  // Save custom policies
+  const savePolicies = (newPolicies: any) => {
+    setPolicies(newPolicies);
+    try { localStorage.setItem("work_policies", JSON.stringify(newPolicies)); } catch {}
+  };
+
+  // Export to PDF
+  const handleExportPDF = () => {
+    if (!result) return;
+    exportToPDF(result, officialStartTime, officialEndTime);
+  };
+
+  // Handle selecting a report from admin/comparison view
+  const handleSelectReport = (r: TimesheetAnalysisResult) => {
+    setResult(r);
+    setViewMode("main");
+  };
+
   // Drag and Drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       setError("الرجاء اختيار ملف صورة صالح (PNG, JPEG, JPG).");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImage(reader.result);
-        setImagePreview(reader.result);
-        setError(null);
-        setResult(null);
+    try {
+      setError(null);
+      setResult(null);
+
+      // Compress image on client side to reduce API latency
+      const compressedDataUrl = await compressImage(file);
+      setImage(compressedDataUrl);
+      setImagePreview(compressedDataUrl);
+
+      // Show compression info
+      const originalKB = Math.round(file.size / 1024);
+      const compressedBytes = Math.round((compressedDataUrl.length * 3) / 4);
+      const compressedKB = Math.round(compressedBytes / 1024);
+      if (compressedKB < originalKB) {
+        console.log(`[Compression] ${originalKB}KB → ${compressedKB}KB (${Math.round((1 - compressedKB / originalKB) * 100)}% reduction)`);
       }
-    };
-    reader.onerror = () => {
-      setError("حدث خطأ أثناء قراءة ملف الصورة.");
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      setError("حدث خطأ أثناء ضغط الصورة: " + (err.message || "خطأ غير معروف"));
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -213,7 +322,7 @@ export default function App() {
     setError(null);
   };
 
-  // Analyze request handler
+  // Analyze request handler with streaming progress
   const handleAnalyze = async () => {
     if (!image) {
       setError("يرجى رفع لقطة شاشة لكشف الدوام أولاً.");
@@ -223,44 +332,65 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setProgressMessage("جاري الاتصال بالخادم...");
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/analyze/stream", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          image,
-          officialStartTime,
-          officialEndTime
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image, officialStartTime, officialEndTime })
       });
 
-      let data: any;
-      const contentType = response.headers.get("content-type");
-      
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        if (text.includes("RESOURCE_EXHAUSTED") || text.includes("429") || text.toLowerCase().includes("quota")) {
-          throw new Error("تم تجاوز حد الحصص المجانية (Quota Exceeded) لواجهة برمجة تطبيقات Gemini. يرجى الانتظار دقيقة واحدة والمحاولة مجدداً، أو استخدام كشف الدوام التجريبي في الأسفل.");
-        }
-        throw new Error(`خطأ في استجابة الخادم (${response.status}): الخادم لم يرجع بيانات بصيغة JSON. يرجى مراجعة إعدادات مفتاح API الخاص بك.`);
-      }
-
       if (!response.ok) {
-        throw new Error(data.error || "فشل التحليل. الرجاء التحقق من جودة الصورة أو مفتاح API.");
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || `خطأ في الخادم (${response.status})`);
       }
 
-      setResult(data);
-      saveToHistory(data);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("فشل في الاتصال بالخادم للتدفق المباشر.");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let eventType = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const jsonStr = line.slice(6);
+            try {
+              const data = JSON.parse(jsonStr);
+              if (eventType === "progress") {
+                setProgressMessage(data.message || "جاري المعالجة...");
+              } else if (eventType === "complete") {
+                setResult(data);
+                saveToHistory(data);
+                setProgressMessage(null);
+              } else if (eventType === "error") {
+                throw new Error(data.message || "خطأ غير معروف من الخادم.");
+              }
+            } catch (parseErr: any) {
+              if (parseErr.message.includes("خطأ") || parseErr.message.includes("حدث خطأ")) {
+                throw parseErr;
+              }
+            }
+          }
+        }
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || "حدث خطأ غير متوقع أثناء الاتصال بالخادم.");
     } finally {
       setLoading(false);
+      setProgressMessage(null);
     }
   };
 
@@ -581,6 +711,11 @@ export default function App() {
   return (
     <div id="app-root" className="min-h-screen bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-200">
       
+      {/* Skip to content link for keyboard users */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
+        الانتقال إلى المحتوى الرئيسي
+      </a>
+
       {/* Header Bar */}
       <header id="app-header" className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 shadow-sm print:hidden transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -600,6 +735,43 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* View Mode Navigation */}
+            <div className="hidden sm:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+              <button onClick={() => setViewMode("main")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
+                <FileText className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => setViewMode("compare")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "compare" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("compareTitle")}>
+                <GitCompareArrows className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => setViewMode("trends")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "trends" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("trendsTitle")}>
+                <BarChart3 className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => setViewMode("policies")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "policies" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("policiesTitle")}>
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => setViewMode("admin")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "admin" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("adminTitle")}>
+                <BarChart3 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Language Toggle */}
+            <button
+              onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
+              title={t("switchLang")}
+            >
+              <Globe className="h-4.5 w-4.5" />
+            </button>
+
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
+              title={dark ? t("lightMode") : t("darkMode")}
+            >
+              {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+            </button>
+
             {/* History Toggle Button */}
             <button
               id="history-btn"
@@ -611,13 +783,13 @@ export default function App() {
               }`}
             >
               <History className="h-4 w-4" />
-              <span>السجلات المحفوظة ({history.length})</span>
+              <span>{t("history")} ({history.length})</span>
             </button>
 
             <a 
               href="#instructions" 
               className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
-              title="دليل الاستخدام"
+              title="Guide"
             >
               <HelpCircle className="h-5 w-5" />
             </a>
@@ -627,10 +799,40 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Right Column: Upload, Settings and History Panel */}
+          {/* Admin Panel View */}
+          {viewMode === "admin" && (
+            <div className="lg:col-span-12">
+              <AdminPanel reports={history} onSelect={handleSelectReport} onBack={() => setViewMode("main")} />
+            </div>
+          )}
+
+          {/* Comparison View */}
+          {viewMode === "compare" && (
+            <div className="lg:col-span-12">
+              <EmployeeComparison reports={history} onSelect={handleSelectReport} />
+            </div>
+          )}
+
+          {/* Trends View */}
+          {viewMode === "trends" && (
+            <div className="lg:col-span-12">
+              <MonthlyTrends reports={history} />
+            </div>
+          )}
+
+          {/* Policies View */}
+          {viewMode === "policies" && (
+            <div className="lg:col-span-12">
+              <CustomPolicies policies={policies} onSave={savePolicies} />
+            </div>
+          )}
+
+          {/* Main View */}
+          {viewMode === "main" && (
+          <>
           <div className="lg:col-span-4 space-y-6 print:hidden">
             
             {/* Saved Reports Sidebar/Dropdown overlay */}
@@ -721,7 +923,11 @@ export default function App() {
                 <div
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-all ${
+                  role="region"
+                  aria-label="منطقة رفع الصورة"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('file-input-main')?.click(); } }}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 ${
                     imagePreview && imagePreview !== "DEMO_MODE"
                       ? "border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-950/10"
                       : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/40 dark:bg-slate-800/5 hover:bg-slate-50 dark:hover:bg-slate-800/10"
@@ -745,6 +951,7 @@ export default function App() {
                         <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer">
                           تغيير الصورة
                           <input 
+                            id="file-input-change"
                             type="file" 
                             accept="image/*" 
                             className="hidden" 
@@ -770,6 +977,7 @@ export default function App() {
                         <label className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-100 transition-all cursor-pointer">
                           اختر ملف من جهازك
                           <input 
+                            id="file-input-main"
                             type="file" 
                             accept="image/*" 
                             className="hidden" 
@@ -797,6 +1005,7 @@ export default function App() {
                         <select 
                           value={officialStartTime}
                           onChange={(e) => setOfficialStartTime(e.target.value)}
+                          aria-label="بداية الدوام الرسمي"
                           className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
                         >
                           {[...TIME_OPTIONS, ...(officialStartTime && !TIME_OPTIONS.includes(officialStartTime) ? [officialStartTime] : [])].sort().map((opt) => (
@@ -816,6 +1025,7 @@ export default function App() {
                         <select 
                           value={officialEndTime}
                           onChange={(e) => setOfficialEndTime(e.target.value)}
+                          aria-label="نهاية الدوام الرسمي"
                           className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
                         >
                           {[...TIME_OPTIONS, ...(officialEndTime && !TIME_OPTIONS.includes(officialEndTime) ? [officialEndTime] : [])].sort().map((opt) => (
@@ -835,6 +1045,8 @@ export default function App() {
                   type="button"
                   onClick={handleAnalyze}
                   disabled={loading || !image}
+                  aria-label="تحليل لقطة الشاشة"
+                  aria-busy={loading}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm shadow-md transition-all ${
                     loading 
                       ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
@@ -890,10 +1102,12 @@ export default function App() {
             {loading && (
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-8 space-y-6 animate-pulse transition-colors">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800"></div>
+                  <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 text-indigo-500 animate-spin" />
+                  </div>
                   <div className="space-y-2 flex-1">
                     <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/4"></div>
-                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-2/4"></div>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold animate-pulse">{progressMessage || "جاري المعالجة..."}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
@@ -942,6 +1156,14 @@ export default function App() {
                         >
                           <Printer className="h-3.5 w-3.5" />
                           <span>طباعة / تصدير PDF</span>
+                        </button>
+
+                        <button
+                          onClick={handleExportPDF}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg border border-rose-600 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>PDF</span>
                         </button>
 
                         <button
@@ -1008,7 +1230,7 @@ export default function App() {
                 </div>
 
                 {/* KPIs Dashboard */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4" role="region" aria-label="مؤشرات الأداء الرئيسية (KPIs)">
                   
                   {/* KPI 1: Correct Attendance Adherence */}
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
@@ -1151,6 +1373,60 @@ export default function App() {
                   </div>
 
                 </div>
+
+                {/* Attendance Breakdown Pie Chart */}
+                {result && (
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
+                    <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                      <PieChart className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                      <span>{lang === "ar" ? "توزيع حالات الحضور" : "Attendance Breakdown"}</span>
+                    </h3>
+                    <div className="h-56 w-full flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: lang === "ar" ? "منتظم" : "Regular", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
+                              { name: lang === "ar" ? "تأخير" : "Late", value: result.lateDaysSummary?.length || 0, color: "#f59e0b" },
+                              { name: lang === "ar" ? "غياب" : "Absent", value: result.kpis.totalAbsences, color: "#ef4444" },
+                              { name: lang === "ar" ? "إجازة" : "Leave", value: result.kpis.totalLeavesUsed, color: "#6366f1" },
+                            ].filter(d => d.value > 0)}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {[
+                              { name: lang === "ar" ? "منتظم" : "Regular", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
+                              { name: lang === "ar" ? "تأخير" : "Late", value: result.lateDaysSummary?.length || 0, color: "#f59e0b" },
+                              { name: lang === "ar" ? "غياب" : "Absent", value: result.kpis.totalAbsences, color: "#ef4444" },
+                              { name: lang === "ar" ? "إجازة" : "Leave", value: result.kpis.totalLeavesUsed, color: "#6366f1" },
+                            ].filter(d => d.value > 0).map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#1e293b",
+                              border: "none",
+                              borderRadius: "12px",
+                              color: "#fff",
+                              fontSize: "11px",
+                            }}
+                          />
+                          <Legend
+                            verticalAlign="bottom"
+                            iconType="circle"
+                            iconSize={8}
+                            wrapperStyle={{ fontSize: "11px", fontWeight: "bold" }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
 
                 {/* Late Days & Early Exit Summary Card */}
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 transition-colors">
@@ -1396,7 +1672,7 @@ export default function App() {
                     </div>
 
                     {/* Filters */}
-                    <div className="flex flex-wrap items-center gap-1.5 print:hidden">
+                    <div className="flex flex-wrap items-center gap-1.5 print:hidden" role="group" aria-label="فلاتر عرض التقرير">
                       <button
                         onClick={() => setFilter("all")}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
@@ -1443,7 +1719,7 @@ export default function App() {
 
                   {/* Daily Report Table */}
                   <div className="overflow-x-auto">
-                    <table className="w-full text-right border-collapse">
+                    <table className="w-full text-right border-collapse" role="table" aria-label="تقرير السجل التفصيلي للحضور والانصراف">
                       <thead>
                         <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">
                           <th className="py-3.5 px-4 font-semibold">اليوم والتاريخ</th>
@@ -1699,42 +1975,39 @@ export default function App() {
             )}
 
             {/* Explanatory Guide Section / System Info */}
-            <div id="instructions" className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4 print:hidden">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <HelpCircle className="h-4.5 w-4.5 text-indigo-600" />
-                <span>كيف يعمل محلل كشوفات الدوام؟</span>
+            <div id="instructions" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:hidden transition-colors">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <HelpCircle className="h-4.5 w-4.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{t("howItWorks")}</span>
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-500 leading-relaxed">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">1</div>
-                  <h4 className="font-bold text-slate-700">1. القراءة البصرية (OCR)</h4>
-                  <p>
-                    يقوم محرك Gemini 2.5 الفائق بتحليل لقطة الشاشة واستخراج جداول الحضور الأساسية، بالإضافة لجداول المغادرات والتصاريح والإجازات بنفس الهيكل المحدد للـ JSON.
-                  </p>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">1</div>
+                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step1Title")}</h4>
+                  <p>{t("step1Desc")}</p>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">2</div>
-                  <h4 className="font-bold text-slate-700">2. توحيد وتنظيف البيانات</h4>
-                  <p>
-                    تتحول جميع الأرقام الشرقية (٠، ١، ٢، ٣...) إلى أرقام غربية، وتُحول التواريخ والمدد الزمنية إلى كائنات رياضية لمقارنتها ومطابقتها بشكل آمن وحيادي.
-                  </p>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">2</div>
+                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step2Title")}</h4>
+                  <p>{t("step2Desc")}</p>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">3</div>
-                  <h4 className="font-bold text-slate-700">3. تطبيق القواعد البرمجية</h4>
-                  <p>
-                    يقارن وقت الوصول بوقت الدوام الرسمي. في حال وجود تأخر، يفحص جدول المغادرات المعتمدة لإلغاء المخالفة إذا كانت مغطاة، وإلا يُسجل كتأخير دقائق، ويُحسب الغياب التلقائي.
-                  </p>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">3</div>
+                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step3Title")}</h4>
+                  <p>{t("step3Desc")}</p>
                 </div>
 
               </div>
             </div>
 
           </div>
+          </>
+          )}
+          {/* End main view */}
 
         </div>
       </main>
