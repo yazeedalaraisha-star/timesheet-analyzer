@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: timesheet-analyzer
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
