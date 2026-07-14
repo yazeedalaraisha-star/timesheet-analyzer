@@ -3,6 +3,7 @@ import { MongoClient, Db } from "mongodb";
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let connecting = false;
+let lastError: string | null = null;
 
 export async function connectDB(): Promise<Db | null> {
   const uri = process.env.MONGODB_URI;
@@ -26,6 +27,7 @@ export async function connectDB(): Promise<Db | null> {
     return db;
   } catch (err: any) {
     console.error("[DB] Connection failed:", err.message);
+    lastError = err.message;
     client = null;
     db = null;
     return null;
@@ -36,6 +38,10 @@ export async function connectDB(): Promise<Db | null> {
 
 export function getDB(): Db | null {
   return db;
+}
+
+export function getDBError(): string | null {
+  return lastError;
 }
 
 export async function closeDB(): Promise<void> {

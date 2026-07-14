@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getDB } from "./db";
+import { getDB, getDBError } from "./db";
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.get("/db-status", async (_req, res) => {
     return res.json({ connected: false, reason: "MONGODB_URI not set" });
   }
   if (!db) {
-    return res.json({ connected: false, reason: "DB not initialized yet" });
+    return res.json({ connected: false, reason: getDBError() || "DB not initialized yet" });
   }
   try {
     await db.command({ ping: 1 });
