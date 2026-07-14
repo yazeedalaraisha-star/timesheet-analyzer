@@ -2,48 +2,63 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { TimesheetAnalysisResult } from "../types";
 
-let cachedFontBase64: string | null = null;
-let fontLoadingPromise: Promise<string | null> | null = null;
+let cachedRegular: string | null = null;
+let cachedBold: string | null = null;
+let fontsLoaded = false;
 
-async function fetchArabicFont(): Promise<string | null> {
-  if (cachedFontBase64) return cachedFontBase64;
-  if (fontLoadingPromise) return fontLoadingPromise;
+async function loadFonts(): Promise<boolean> {
+  if (fontsLoaded) return true;
+  try {
+    const [regResp, boldResp] = await Promise.all([
+      fetch("/fonts/NotoNaskhArabic-Regular.ttf"),
+      fetch("/fonts/NotoNaskhArabic-Bold.ttf"),
+    ]);
+    if (!regResp.ok || !boldResp.ok) return false;
 
-  fontLoadingPromise = (async () => {
-    try {
-      const cssResp = await fetch(
-        "https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap",
-        { headers: { "User-Agent": "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)" } }
-      );
-      const cssText = await cssResp.text();
-      const urlMatch = cssText.match(/url\((https:\/\/[^)]+\.ttf)\)/);
-      if (!urlMatch) return null;
+    const [regBuf, boldBuf] = await Promise.all([
+      regResp.arrayBuffer(),
+      boldResp.arrayBuffer(),
+    ]);
 
-      const fontResp = await fetch(urlMatch[1]);
-      const buffer = await fontResp.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = "";
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      cachedFontBase64 = btoa(binary);
-      return cachedFontBase64;
-    } catch (e) {
-      console.error("Failed to load Arabic font:", e);
-      return null;
-    }
-  })();
+    const regBytes = new Uint8Array(regBuf);
+    const boldBytes = new Uint8Array(boldBuf);
 
-  return fontLoadingPromise;
+    let regBin = "";
+    for (let i = 0; i < regBytes.byteLength; i++) regBin += String.fromCharCode(regBytes[i]);
+    cachedRegular = btoa(regBin);
+
+    let boldBin = "";
+    for (let i = 0; i < boldBytes.byteLength; i++) boldBin += String.fromCharCode(boldBytes[i]);
+    cachedBold = btoa(boldBin);
+
+    fontsLoaded = true;
+    return true;
+  } catch (e) {
+    console.error("Failed to load Arabic fonts:", e);
+    return false;
+  }
 }
 
-function setupArabicFont(doc: jsPDF, base64: string, fontName: string) {
-  doc.addFileToVFS(`${fontName}.ttf`, base64);
-  doc.addFont(`${fontName}.ttf`, fontName, "normal");
+function reg(doc: jsPDF) {
+  if (cachedRegular) {
+    doc.addFileToVFS("NotoNaskhArabic-Regular.ttf", cachedRegular);
+    doc.addFont("NotoNaskhArabic-Regular.ttf", "NotoNaskh", "normal");
+  }
 }
 
-function tr(doc: jsPDF, text: string, x: number, y: number, options?: { align?: string; maxWidth?: number }) {
-  return doc.text(text, x, y, options as any);
+function bld(doc: jsPDF) {
+  if (cachedBold) {
+    doc.addFileToVFS("NotoNaskhArabic-Bold.ttf", cachedBold);
+    doc.addFont("NotoNaskhArabic-Bold.ttf", "NotoNaskh", "bold");
+  }
+}
+
+function useFont(doc: jsPDF, weight: "normal" | "bold") {
+  if (fontsLoaded) {
+    doc.setFont("NotoNaskh", weight);
+  } else {
+    doc.setFont("helvetica", weight);
+  }
 }
 
 export async function exportToPDF(
@@ -52,54 +67,50 @@ export async function exportToPDF(
   officialEndTime: string,
   lang: "ar" | "en" = "ar"
 ) {
-  const fontBase64 = await fetchArabicFont();
-  const hasArabicFont = !!fontBase64;
+  const hasFonts = await loadFonts();
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
-  const fontName = "NotoNaskh";
-  if (hasArabicFont) {
-    setupArabicFont(doc, fontBase64!, fontName);
+  if (hasFonts) {
+    reg(doc);
+    bld(doc);
   }
-  const fallbackFont = hasArabicFont ? fontName : "helvetica";
 
+  const ff = hasFonts ? "NotoNaskh" : "helvetica";
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
-  const isRTL = lang === "ar";
-
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
 
-  doc.setFont(fallbackFont, "bold");
+  // Title
   doc.setFontSize(18);
+  useFont(doc, "bold");
   doc.text(t("تقرير كشف الدوام", "Timesheet Analysis Report"), pageWidth / 2, 20, { align: "center" });
 
+  // Employee info
   doc.setFontSize(11);
-  doc.setFont(fallbackFont, "normal");
+  useFont(doc, "normal");
   doc.text(
     t(
       `الموظف: ${result.employee_info.name}  |  الرقم: ${result.employee_info.id}  |  الوظيفة: ${result.employee_info.role}`,
       `Employee: ${result.employee_info.name}  |  ID: ${result.employee_info.id}  |  Role: ${result.employee_info.role}`
     ),
-    pageWidth / 2,
-    30,
-    { align: "center" }
+    pageWidth / 2, 30, { align: "center" }
   );
   doc.text(
     t(
       `ساعات العمل: ${officialStartTime} - ${officialEndTime}  |  التاريخ: ${new Date().toLocaleDateString("ar-EG")}`,
       `Work Hours: ${officialStartTime} - ${officialEndTime}  |  Generated: ${new Date().toLocaleDateString("en")}`
     ),
-    pageWidth / 2,
-    36,
-    { align: "center" }
+    pageWidth / 2, 36, { align: "center" }
   );
 
+  // KPIs
   doc.setFontSize(12);
-  doc.setFont(fallbackFont, "bold");
+  useFont(doc, "bold");
   doc.text(t("مؤشرات الأداء الرئيسية", "Key Performance Indicators"), margin, 48);
 
   doc.setFontSize(10);
-  doc.setFont(fallbackFont, "normal");
+  useFont(doc, "normal");
   const kpis = [
     t(`نسبة الالتزام: ${result.kpis.correctAttendancePercentage ?? 100}%`, `Compliance: ${result.kpis.correctAttendancePercentage ?? 100}%`),
     t(`التأخير: ${result.kpis.totalDelayMinutes} دقيقة`, `Delays: ${result.kpis.totalDelayMinutes} min`),
@@ -110,6 +121,7 @@ export async function exportToPDF(
   ];
   doc.text(kpis.join("   |   "), margin, 55);
 
+  // Daily report table
   const tableHeaders = [
     [
       t("اليوم والتاريخ", "Day & Date"),
@@ -137,7 +149,7 @@ export async function exportToPDF(
     head: tableHeaders,
     body: tableData,
     styles: {
-      font: fallbackFont,
+      font: ff,
       fontSize: 8,
       cellPadding: 2,
       halign: "center",
@@ -162,7 +174,7 @@ export async function exportToPDF(
     didParseCell: (data) => {
       if (data.section === "body" && data.column.index === 4) {
         const val = String(data.cell.raw);
-        if (val.includes("تأخير") || val.includes("غياب") || val.includes("غياب") || val.includes("Delinquent") || val.includes("Absent")) {
+        if (val.includes("تأخير") || val.includes("غياب") || val.includes("Delinquent") || val.includes("Absent")) {
           data.cell.styles.textColor = [220, 38, 38];
         } else if (val.includes("منتظم") || val.includes("Regular") || val.includes("حضور")) {
           data.cell.styles.textColor = [5, 150, 105];
@@ -173,10 +185,11 @@ export async function exportToPDF(
     },
   });
 
+  // Late days summary
   const finalY = (doc as any).lastAutoTable?.finalY || 62;
   if (result.lateDaysSummary && result.lateDaysSummary.length > 0) {
     doc.setFontSize(12);
-    doc.setFont(fallbackFont, "bold");
+    useFont(doc, "bold");
     doc.text(t("ملخص أيام التأخر", "Late Days Summary"), margin, finalY + 12);
 
     const lateData = result.lateDaysSummary.map((item) => [
@@ -187,24 +200,19 @@ export async function exportToPDF(
 
     autoTable(doc, {
       startY: finalY + 16,
-      head: [
-        [
-          t("اليوم والتاريخ", "Day & Date"),
-          t("وقت الدخول", "Check In Time"),
-          t("التأخير", "Delay"),
-        ],
-      ],
+      head: [[t("اليوم والتاريخ", "Day & Date"), t("وقت الدخول", "Check In Time"), t("التأخير", "Delay")]],
       body: lateData,
-      styles: { font: fallbackFont, fontSize: 8, cellPadding: 2 },
+      styles: { font: ff, fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [245, 158, 11], textColor: 255, fontStyle: "bold" },
       margin: { left: margin },
     });
   }
 
+  // Duplicate fingerprints
   if (result.duplicateFingerprintsSummary && result.duplicateFingerprintsSummary.length > 0) {
     const dupY = (doc as any).lastAutoTable?.finalY || finalY + 16;
     doc.setFontSize(12);
-    doc.setFont(fallbackFont, "bold");
+    useFont(doc, "bold");
     doc.text(t("البصمات المكررة", "Duplicate Fingerprints"), margin, dupY + 12);
 
     const dupData = result.duplicateFingerprintsSummary.map((item) => [
@@ -214,25 +222,21 @@ export async function exportToPDF(
 
     autoTable(doc, {
       startY: dupY + 16,
-      head: [
-        [
-          t("اليوم والتاريخ", "Day & Date"),
-          t("التفاصيل", "Details"),
-        ],
-      ],
+      head: [[t("اليوم والتاريخ", "Day & Date"), t("التفاصيل", "Details")]],
       body: dupData,
-      styles: { font: fallbackFont, fontSize: 8, cellPadding: 2 },
+      styles: { font: ff, fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [239, 68, 68], textColor: 255, fontStyle: "bold" },
       margin: { left: margin },
     });
   }
 
+  // Footer
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150);
-    doc.setFont(fallbackFont, "normal");
+    useFont(doc, "normal");
     doc.text(
       t(
         `تم إنشاء بواسطة محلل الدوام الذكي | ${result.employee_info.name} | صفحة ${i}/${pageCount}`,
