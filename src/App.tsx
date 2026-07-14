@@ -91,7 +91,7 @@ const getStatusExplanation = (row: any, officialStartTime: string, officialEndTi
   return explanation.trim();
 };
 
-const compressImage = (file: File, maxWidth = 1920, quality = 0.82): Promise<string> => {
+const compressImage = (file: File, maxWidth = 2400, quality = 0.92): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -111,8 +111,11 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.82): Promise<str
           resolve(reader.result as string);
           return;
         }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        const isSmallEnough = (w * h) < 4000000;
+        resolve(canvas.toDataURL(isSmallEnough ? "image/png" : "image/jpeg", quality));
       };
       img.onerror = () => reject(new Error("فشل تحميل الصورة للضغط"));
       img.src = reader.result as string;

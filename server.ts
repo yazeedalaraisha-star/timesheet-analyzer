@@ -98,21 +98,39 @@ function parseDate(dateStr: string): Date | null {
   return null;
 }
 
-// Parse time string to seconds from midnight
+// Parse time string to seconds from midnight (handles 12h AM/PM and 24h)
 function parseTimeToSeconds(timeStr: string): number | null {
   if (!timeStr) return null;
-  const cleanStr = cleanArabicNumbers(timeStr).trim();
+  let cleanStr = cleanArabicNumbers(timeStr).trim();
   
-  // Strip any AM/PM or Arabic equivalent PM/AM if existing
-  const cleanTime = cleanStr.replace(/[أا]م|[بب]م|صباحا|مساء|AM|PM/gi, "").trim();
-  const parts = cleanTime.split(':');
+  // Detect AM/PM before stripping
+  let isPM = false;
+  let hasAMPM = false;
+  const pmMatch = cleanStr.match(/(?:pm|م$|مساءً?|م\s*$)/i);
+  const amMatch = cleanStr.match(/(?:am|ص$|صباحاً?|ص\s*$)/i);
+  if (pmMatch) { isPM = true; hasAMPM = true; }
+  if (amMatch) { hasAMPM = true; }
+  
+  // Strip AM/PM markers
+  cleanStr = cleanStr.replace(/[أا]م|[بب]م|صباحا|مساء|AM|PM|ص(?=\s|$)|م(?=\s|$)/gi, "").trim();
+  
+  const parts = cleanStr.split(':');
   if (parts.length >= 2) {
-    const hours = parseInt(parts[0], 10);
+    let hours = parseInt(parts[0], 10);
     const minutes = parseInt(parts[1], 10);
     const seconds = parts.length > 2 ? parseInt(parts[2], 10) : 0;
-    if (!isNaN(hours) && !isNaN(minutes) && !isNaN(seconds)) {
-      return hours * 3600 + minutes * 60 + seconds;
+    
+    if (isNaN(hours) || isNaN(minutes) || isNaN(seconds)) return null;
+    
+    // Convert 12-hour to 24-hour
+    if (hasAMPM) {
+      if (isPM && hours < 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
     }
+    
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    
+    return hours * 3600 + minutes * 60 + seconds;
   }
   return null;
 }
@@ -183,6 +201,7 @@ async function callGeminiWithRetryAndFallback(
           config: {
             responseMimeType: "application/json",
             responseSchema: schema,
+            temperature: 0.1,
           },
         });
         return response;
@@ -285,6 +304,13 @@ async function startServer() {
         });
       }
 
+      // Reject images that are too small (likely corrupted or thumbnails)
+      if (estimatedSizeBytes < 5120) {
+        return res.status(400).json({
+          error: "الصورة صغيرة جداً أو فارغة. يرجى رفع لقطة شاشة واضحة بدقة عالية."
+        });
+      }
+
       // Lazy load Gemini API client
       const ai = getGeminiClient();
 
@@ -296,14 +322,27 @@ async function startServer() {
       };
 
       const promptPart = {
-        text: `أنت خبير محترف في قراءة الجداول وكشوفات الدوام من لقطات الشاشة باللغة العربية واستخراج البيانات منها بدقة بالغة.
-كشف الدوام المرفق باللغة العربية يحتوي على:
-1. رأس الصفحة (Employee Info): رقم الموظف (id)، اسم الموظف الكامل (name)، المسمى الوظيفي أو الوظيفة (role).
-2. الجدول الرئيسي لحركات الحضور والخروج (Attendance Records): لكل حركة هناك يوم (day)، تاريخ (date)، وقت الحركة (time)، ونوع الحركة (type) الذي يجب أن يكون إما 'حضور' أو 'خروج'.
-3. جدول المغادرات/التصاريح خلال الشهر (Permissions): يحتوي على تاريخ المغادرة (date)، وقت بداية المغادرة (start_time)، ووقت نهاية المغادرة (end_time).
-4. جدول الإجازات خلال الشهر (Leaves): يحتوي على تاريخ البداية (start_date)، تاريخ الانتهاء (end_date)، ونوع الإجازة (leave_type) مثل سنوية، مرضية، إلخ.
+        text: `أنت خبير استخراج بيانات من كشوفات الدوام العربية. قم بقراءة الصورة بدقة متناهية.
 
-قم بتحليل الصورة المرفقة واستخراج كافة التفاصيل بدقة متناهية وإرجاعها في شكل هيكل JSON مطابق تماماً للمخطط المحدّد (Schema). تأكد من استخراج كافة التواريخ بصيغة DD-MM-YYYY والأوقات بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة.`,
+تعليمات حرجة للدقة:
+1. الأرقام العربية (٠١٢٣٤٥٦٧٨٩) يجب تحويلها للأرقام اللاتينية (0123456789).
+2. اقرأ كل خلية في الجدول على حدة. لا تتخمن أو تكمل بيانات غير واضحة.
+3. إذا كانت خلية غير مقروءة أو مشوشة، أعد القيمة كما تراها مع أفضل تفسير لك، ولا تتركها فارغة.
+4. تحقق من توافق اسم اليوم بالتاريخ: مثلاً إذا التاريخ يقابل يوم الأحد، تأكد أن اليوم المكتوب "الأحد".
+5. وقت الدخول يجب أن يكون قبل وقت الخروج لنفس اليوم.
+6. إذا وجدت أكثر من حركة دخول في يوم واحد، احتفظ بالسجلات جميعها.
+7. الأوقات اكتبها بنظام 24 ساعة فقط (بدون AM/PM).
+
+هيكل كشف الدوام:
+- رأس الصفحة: رقم الموظف (id)، اسم الموظف الكامل (name)، المسمى الوظيفي (role).
+- جدول الحضور والخروج: لكل حركة: يوم (day)، تاريخ (date) بصيغة DD-MM-YYYY، وقت (time) بصيغة HH:MM أو HH:MM:SS بنظام 24 ساعة، نوع الحركة (type) = 'حضور' للدخول فقط أو 'خروج' للخروج فقط. لا تستخدم أي كلمة أخرى.
+- جدول المغادرات/التصاريح: تاريخ (date)، وقت البداية (start_time)، وقت النهاية (end_time).
+- جدول الإجازات: تاريخ البداية (start_date)، تاريخ النهاية (end_date)، نوع الإجازة (leave_type).
+
+تأكد من:
+- استخراج جميع السجلات دون حذف أي صف.
+- التأكد من أن التواريخ بصيغة DD-MM-YYYY صحيحة (اليوم 01-31، الشهر 01-12).
+- الأوقات بنظام 24 ساعة فقط.`,
       };
 
       // Call Gemini with retry and fallback mechanism using our utility
@@ -332,7 +371,7 @@ async function startServer() {
                   day: { type: Type.STRING, description: "اسم اليوم باللغة العربية (الاثنين، الثلاثاء، إلخ)" },
                   date: { type: Type.STRING, description: "التاريخ بصيغة DD-MM-YYYY" },
                   time: { type: Type.STRING, description: "الوقت بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة" },
-                  type: { type: Type.STRING, description: "نوع الحركة: يجب أن يكون حصراً إما 'حضور' أو 'خروج'" }
+                  type: { type: Type.STRING, description: "نوع الحركة: 'حضور' للدخول فقط أو 'خروج' للخروج فقط. لا تستخدم أي كلمة أخرى.", enum: ["حضور", "خروج"] }
                 },
                 required: ["day", "date", "time", "type"]
               }
@@ -369,12 +408,8 @@ async function startServer() {
       );
 
       let extractedText = response.text || "{}";
-      // Remove markdown code block wraps if present
-      if (extractedText.includes("```json")) {
-        extractedText = extractedText.split("```json")[1].split("```")[0];
-      } else if (extractedText.includes("```")) {
-        extractedText = extractedText.split("```")[1].split("```")[0];
-      }
+      // Robust markdown code block stripping
+      extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       const rawExtracted = JSON.parse(extractedText.trim());
 
       // Let's implement the Business Logic and Cleaning!
@@ -427,7 +462,7 @@ async function startServer() {
           attendanceByDate[dateKey] = { checkIn: null, checkOut: null, checkInCount: 0, checkOutCount: 0 };
         }
 
-        const normType = rec.type === "حضور" ? "حضور" : rec.type === "خروج" ? "خروج" : "";
+        const normType = (rec.type === "حضور" || rec.type.includes("دخول") || rec.type.includes("قدوم")) ? "حضور" : (rec.type === "خروج" || rec.type.includes("انصراف") || rec.type.includes("مغادرة")) ? "خروج" : "";
         if (!normType) return;
 
         if (normType === "حضور") {
@@ -845,14 +880,27 @@ async function startServer() {
       };
 
       const promptPart = {
-        text: `أنت خبير محترف في قراءة الجداول وكشوفات الدوام من لقطات الشاشة باللغة العربية واستخراج البيانات منها بدقة بالغة.
-كشف الدوام المرفق باللغة العربية يحتوي على:
-1. رأس الصفحة (Employee Info): رقم الموظف (id)، اسم الموظف الكامل (name)، المسمى الوظيفي أو الوظيفة (role).
-2. الجدول الرئيسي لحركات الحضور والخروج (Attendance Records): لكل حركة هناك يوم (day)، تاريخ (date)، وقت الحركة (time)، ونوع الحركة (type) الذي يجب أن يكون إما 'حضور' أو 'خروج'.
-3. جدول المغادرات/التصاريح خلال الشهر (Permissions): يحتوي على تاريخ المغادرة (date)، وقت بداية المغادرة (start_time)، ووقت نهاية المغادرة (end_time).
-4. جدول الإجازات خلال الشهر (Leaves): يحتوي على تاريخ البداية (start_date)، تاريخ الانتهاء (end_date)، ونوع الإجازة (leave_type) مثل سنوية، مرضية، إلخ.
+        text: `أنت خبير استخراج بيانات من كشوفات الدوام العربية. قم بقراءة الصورة بدقة متناهية.
 
-قم بتحليل الصورة المرفقة واستخراج كافة التفاصيل بدقة متناهية وإرجاعها في شكل هيكل JSON مطابق تماماً للمخطط المحدّد (Schema). تأكد من استخراج كافة التواريخ بصيغة DD-MM-YYYY والأوقات بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة.`,
+تعليمات حرجة للدقة:
+1. الأرقام العربية (٠١٢٣٤٥٦٧٨٩) يجب تحويلها للأرقام اللاتينية (0123456789).
+2. اقرأ كل خلية في الجدول على حدة. لا تتخمن أو تكمل بيانات غير واضحة.
+3. إذا كانت خلية غير مقروءة أو مشوشة، أعد القيمة كما تراها مع أفضل تفسير لك، ولا تتركها فارغة.
+4. تحقق من توافق اسم اليوم بالتاريخ: مثلاً إذا التاريخ يقابل يوم الأحد، تأكد أن اليوم المكتوب "الأحد".
+5. وقت الدخول يجب أن يكون قبل وقت الخروج لنفس اليوم.
+6. إذا وجدت أكثر من حركة دخول في يوم واحد، احتفظ بالسجلات جميعها.
+7. الأوقات اكتبها بنظام 24 ساعة فقط (بدون AM/PM).
+
+هيكل كشف الدوام:
+- رأس الصفحة: رقم الموظف (id)، اسم الموظف الكامل (name)، المسمى الوظيفي (role).
+- جدول الحضور والخروج: لكل حركة: يوم (day)، تاريخ (date) بصيغة DD-MM-YYYY، وقت (time) بصيغة HH:MM أو HH:MM:SS بنظام 24 ساعة، نوع الحركة (type) = 'حضور' للدخول فقط أو 'خروج' للخروج فقط. لا تستخدم أي كلمة أخرى.
+- جدول المغادرات/التصاريح: تاريخ (date)، وقت البداية (start_time)، وقت النهاية (end_time).
+- جدول الإجازات: تاريخ البداية (start_date)، تاريخ النهاية (end_date)، نوع الإجازة (leave_type).
+
+تأكد من:
+- استخراج جميع السجلات دون حذف أي صف.
+- التأكد من أن التواريخ بصيغة DD-MM-YYYY صحيحة (اليوم 01-31، الشهر 01-12).
+- الأوقات بنظام 24 ساعة فقط.`,
       };
 
       const schema = {
@@ -876,7 +924,7 @@ async function startServer() {
                 day: { type: Type.STRING, description: "اسم اليوم باللغة العربية" },
                 date: { type: Type.STRING, description: "التاريخ بصيغة DD-MM-YYYY" },
                 time: { type: Type.STRING, description: "الوقت بصيغة HH:MM:SS أو HH:MM بنظام 24 ساعة" },
-                type: { type: Type.STRING, description: "نوع الحركة: 'حضور' أو 'خروج'" }
+                type: { type: Type.STRING, description: "نوع الحركة: 'حضور' للدخول فقط أو 'خروج' للخروج فقط. لا تستخدم أي كلمة أخرى.", enum: ["حضور", "خروج"] }
               },
               required: ["day", "date", "time", "type"]
             }
@@ -918,12 +966,8 @@ async function startServer() {
       sendEvent("progress", { step: "process", message: "جاري معالجة البيانات وحساب الإحصائيات..." });
 
       let extractedText = response.text || "{}";
-      if (extractedText.includes("```json")) {
-        extractedText = extractedText.split("```json")[1].split("```")[0];
-      } else if (extractedText.includes("```")) {
-        extractedText = extractedText.split("```")[1].split("```")[0];
-      }
-      const rawExtracted = JSON.parse(extractedText.trim());
+      extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      const rawExtracted = JSON.parse(extractedText);
 
       // --- Business Logic (same as non-streaming) ---
       const employee_info = {
@@ -962,7 +1006,7 @@ async function startServer() {
         if (!attendanceByDate[dateKey]) {
           attendanceByDate[dateKey] = { checkIn: null, checkOut: null, checkInCount: 0, checkOutCount: 0 };
         }
-        const normType = rec.type === "حضور" ? "حضور" : rec.type === "خروج" ? "خروج" : "";
+        const normType = (rec.type === "حضور" || rec.type.includes("دخول") || rec.type.includes("قدوم")) ? "حضور" : (rec.type === "خروج" || rec.type.includes("انصراف") || rec.type.includes("مغادرة")) ? "خروج" : "";
         if (!normType) return;
         if (normType === "حضور") {
           attendanceByDate[dateKey].checkInCount++;
