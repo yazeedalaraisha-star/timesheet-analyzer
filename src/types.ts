@@ -113,4 +113,6 @@ export interface OvertimeEntry {
   date: string;
   hours: number;
   notes: string;
+  type?: "overtime" | "deduction";
+  reason?: string;
 }
