@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle, Search, User, Users, Lock, Key, X } from "lucide-react";
+import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle, Search, User, Users, Lock, Key, X, FileDown, Download } from "lucide-react";
 import { OvertimeEntry } from "../types";
 import { verifyPassword, changePassword } from "../apiClient";
 
@@ -19,6 +19,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -41,10 +43,19 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   }, [uniqueNames, employeeName]);
 
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return entries;
-    const q = searchQuery.trim();
-    return entries.filter((e) => e.employeeName.includes(q));
-  }, [entries, searchQuery]);
+    let result = entries;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim();
+      result = result.filter((e) => e.employeeName.includes(q));
+    }
+    if (dateFrom) {
+      result = result.filter((e) => e.date >= dateFrom);
+    }
+    if (dateTo) {
+      result = result.filter((e) => e.date <= dateTo);
+    }
+    return result;
+  }, [entries, searchQuery, dateFrom, dateTo]);
 
   const perEmployeeSummary = useMemo(() => {
     const map = new Map<string, { hours: number; days: number; entries: number }>();
@@ -140,9 +151,155 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   };
 
   const handleClearAll = () => {
-    if (window.confirm("هل أنت متأكد من حذف جميع سجلات العمل الإضافي؟")) {
-      onUpdate([]);
+    if (searchQuery.trim()) {
+      if (window.confirm(`هل أنت متأكد من حذف جميع سجلات ${searchQuery.trim()}؟`)) {
+        onUpdate(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+      }
+    } else {
+      if (window.confirm("هل أنت متأكد من حذف جميع سجلات العمل الإضافي لجميع الموظفين؟")) {
+        onUpdate([]);
+      }
     }
+  };
+
+  const handleExportCSV = () => {
+    const headers = ["#", "الموظف", "التاريخ", "اليوم", "الساعات", "ملاحظات"];
+    const rows = filteredEntries.map((entry, idx) => {
+      const d = new Date(entry.date);
+      const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
+      return [
+        filteredEntries.length - idx,
+        entry.employeeName,
+        entry.date,
+        dayName,
+        entry.hours,
+        entry.notes || "-",
+      ];
+    });
+
+    const csvRows = [
+      headers.join(","),
+      ...rows.map((r) => r.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(",")),
+    ];
+    const csvContent = csvRows.join("\r\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `سجل_العمل_الاضافي_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = async () => {
+    const jsPDFModule = await import("jspdf");
+    const autoTableModule = await import("jspdf-autotable");
+    const jsPDF = jsPDFModule.default;
+    const autoTable = autoTableModule.default;
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+    let fontRegular: string | null = null;
+    let fontBold: string | null = null;
+    try {
+      const [regResp, boldResp] = await Promise.all([
+        fetch("/fonts/NotoNaskhArabic-Regular.ttf"),
+        fetch("/fonts/NotoNaskhArabic-Bold.ttf"),
+      ]);
+      if (regResp.ok && boldResp.ok) {
+        const arrayBufferToBase64 = async (resp: Response) => {
+          const buf = await resp.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let bin = "";
+          for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+          return btoa(bin);
+        };
+        fontRegular = await arrayBufferToBase64(regResp);
+        fontBold = await arrayBufferToBase64(boldResp);
+      }
+    } catch {}
+
+    if (fontRegular && fontBold) {
+      doc.addFileToVFS("NotoNaskhArabic-Regular.ttf", fontRegular);
+      doc.addFileToVFS("NotoNaskhArabic-Bold.ttf", fontBold);
+      doc.addFont("NotoNaskhArabic-Regular.ttf", "NotoArabic", "normal");
+      doc.addFont("NotoNaskhArabic-Bold.ttf", "NotoArabic", "bold");
+      doc.setFont("NotoArabic");
+    }
+
+    doc.setFontSize(16);
+    doc.text("سجل العمل الإضافي", 148, 15, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`تاريخ التصدير: ${new Date().toLocaleDateString("ar-EG")}`, 148, 22, { align: "center" });
+
+    if (searchQuery.trim()) {
+      doc.text(`الموظف: ${searchQuery.trim()}`, 148, 28, { align: "center" });
+    }
+    if (dateFrom || dateTo) {
+      const range = `من ${dateFrom || "—"} إلى ${dateTo || "—"}`;
+      doc.text(range, 148, searchQuery.trim() ? 34 : 28, { align: "center" });
+    }
+
+    const startY = 38;
+    const headers = [["#", "الموظف", "التاريخ", "اليوم", "الساعات", "ملاحظات"]];
+    const data = filteredEntries.map((entry, idx) => {
+      const d = new Date(entry.date);
+      const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
+      return [
+        String(filteredEntries.length - idx),
+        entry.employeeName,
+        entry.date,
+        dayName,
+        `${entry.hours}`,
+        entry.notes || "-",
+      ];
+    });
+
+    const totalH = filteredEntries.reduce((s, e) => s + e.hours, 0);
+    const totalD = Math.floor(totalH / 8);
+
+    autoTable(doc, {
+      head: headers,
+      body: data,
+      startY,
+      theme: "grid",
+      styles: {
+        font: "NotoArabic",
+        fontSize: 8,
+        halign: "center",
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [99, 102, 241],
+        textColor: 255,
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 40 },
+        5: { cellWidth: "auto" },
+      },
+      margin: { left: 14, right: 14 },
+      didDrawPage: (data: any) => {
+        const pageHeight = doc.internal.pageSize.height;
+        doc.setFontSize(9);
+        doc.text(
+          `الإجمالي: ${totalH} ساعة = ${totalD} يوم  |  عدد السجلات: ${filteredEntries.length}`,
+          148,
+          pageHeight - 10,
+          { align: "center" }
+        );
+        doc.text(
+          `صفحة ${doc.getNumberOfPages()}`,
+          14,
+          pageHeight - 10
+        );
+      },
+    });
+
+    doc.save(`سجل_العمل_الاضافي_${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
   return (
@@ -391,29 +548,76 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
       {/* Entries Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <span>السجلات ({filteredEntries.length}{searchQuery ? ` من ${entries.length}` : ""})</span>
-          </h3>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث بالاسم..."
-                className="pr-8 pl-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all w-40"
-              />
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span>السجلات ({filteredEntries.length}{searchQuery || dateFrom || dateTo ? ` من ${entries.length}` : ""})</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="بحث بالاسم..."
+                  className="pr-8 pl-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all w-36"
+                />
+              </div>
+              {filteredEntries.length > 0 && (
+                <>
+                  <button
+                    onClick={handleExportPDF}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-lg transition-all"
+                    title="تصدير PDF"
+                  >
+                    <FileDown className="h-3 w-3" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-all"
+                    title="تصدير Excel"
+                  >
+                    <Download className="h-3 w-3" />
+                    Excel
+                  </button>
+                </>
+              )}
+              {entries.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  مسح الكل
+                </button>
+              )}
             </div>
-            {entries.length > 0 && (
+          </div>
+          {/* Date Range Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">فلتر بالتاريخ:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-[10px] font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">إلى</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-[10px] font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            {(dateFrom || dateTo) && (
               <button
-                onClick={handleClearAll}
-                className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline font-bold"
               >
-                <Trash2 className="h-3 w-3" />
-                مسح الكل
+                مسح الفلتر
               </button>
             )}
           </div>
@@ -447,7 +651,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 {filteredEntries.map((entry, idx) => {
                   const d = new Date(entry.date);
                   const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
-                  return (
+                    return (
                     <tr
                       key={entry.id}
                       className="hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-all"
@@ -540,7 +744,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleVerifyAndAdd(); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { deleteId ? handleConfirmDelete() : handleVerifyAndAdd(); } }}
               placeholder="أدخل الباسورد"
               autoFocus
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
