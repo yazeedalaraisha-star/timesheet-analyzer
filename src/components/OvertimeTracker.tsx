@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle, Search, User, Users } from "lucide-react";
+import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle, Search, User, Users, Lock, Key, X } from "lucide-react";
 import { OvertimeEntry } from "../types";
+import { verifyPassword, changePassword } from "../apiClient";
 
 interface Props {
   entries: OvertimeEntry[];
@@ -18,6 +19,16 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [oldPasswordInput, setOldPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
 
   const uniqueNames = useMemo(() => {
     const names = new Set(entries.map((e) => e.employeeName));
@@ -53,7 +64,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const totalDays = Math.floor(totalHours / 8);
   const remainingHours = totalHours % 8;
 
-  const handleAdd = () => {
+  const handleAddClick = () => {
     const h = parseFloat(hours);
     if (!employeeName.trim()) {
       setError("يرجى إدخال اسم الموظف");
@@ -71,7 +82,22 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       setError("لا يمكن أن تتجاوز الساعات 24 ساعة يومياً");
       return;
     }
+    setError(null);
+    setShowPasswordModal(true);
+  };
 
+  const handleVerifyAndAdd = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+
+    if (!valid) {
+      setPasswordError("الباسورد غير صحيح");
+      return;
+    }
+
+    const h = parseFloat(hours);
     const newEntry: OvertimeEntry = {
       id: "ot_" + Date.now(),
       employeeName: employeeName.trim(),
@@ -83,13 +109,34 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     onUpdate([newEntry, ...entries]);
     setHours("");
     setNotes("");
-    setError(null);
+    setShowPasswordModal(false);
+    setPasswordInput("");
+    setPasswordError(null);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("هل أنت متأكد من حذف هذا السجل؟")) {
-      onUpdate(entries.filter((e) => e.id !== id));
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const handleDeleteClick = (id: string) => {
+    setDeleteId(id);
+    setShowPasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+
+    if (!valid) {
+      setPasswordError("الباسورد غير صحيح");
+      return;
     }
+
+    onUpdate(entries.filter((e) => e.id !== deleteId));
+    setDeleteId(null);
+    setShowPasswordModal(false);
+    setPasswordInput("");
+    setPasswordError(null);
   };
 
   const handleClearAll = () => {
@@ -116,6 +163,21 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 تسجيل ساعات العمل الإضافي لكل موظف — كل 8 ساعات = يوم إضافي
               </p>
             </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={() => {
+                setShowChangePasswordModal(true);
+                setOldPasswordInput("");
+                setNewPasswordInput("");
+                setChangePasswordError(null);
+                setChangePasswordSuccess(false);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+            >
+              <Key className="h-3.5 w-3.5" />
+              <span>تغيير الباسورد</span>
+            </button>
           </div>
         </div>
       </div>
@@ -319,7 +381,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         )}
 
         <button
-          onClick={handleAdd}
+          onClick={handleAddClick}
           className="mt-3 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl shadow-sm shadow-amber-100 dark:shadow-none transition-all active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
@@ -418,7 +480,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => handleDelete(entry.id)}
+                          onClick={() => handleDeleteClick(entry.id)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
                           title="حذف السجل"
                         >
@@ -449,6 +511,158 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           </div>
         )}
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in-up">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <Lock className="h-4 w-4 text-amber-600" />
+                <span>{deleteId ? "تأكيد الحذف" : "تأكيد الإضافة"}</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordInput("");
+                  setPasswordError(null);
+                  setDeleteId(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {deleteId ? "أدخل الباسورد لتأكيد حذف هذا السجل" : "أدخل الباسورد لتسجيل سجل العمل الإضافي"}
+            </p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleVerifyAndAdd(); }}
+              placeholder="أدخل الباسورد"
+              autoFocus
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            {passwordError && (
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl">
+                {passwordError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordInput("");
+                  setPasswordError(null);
+                  setDeleteId(null);
+                }}
+                className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={deleteId ? handleConfirmDelete : handleVerifyAndAdd}
+                disabled={passwordLoading || !passwordInput}
+                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  deleteId
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-amber-600 hover:bg-amber-700"
+                } ${passwordLoading || !passwordInput ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {passwordLoading ? (
+                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                ) : deleteId ? (
+                  "حذف"
+                ) : (
+                  "إضافة"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in-up">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <Key className="h-4 w-4 text-indigo-600" />
+                <span>تغيير الباسورد</span>
+              </h3>
+              <button
+                onClick={() => setShowChangePasswordModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {changePasswordSuccess ? (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs rounded-xl text-center font-bold">
+                تم تغيير الباسورد بنجاح!
+              </div>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  value={oldPasswordInput}
+                  onChange={(e) => setOldPasswordInput(e.target.value)}
+                  placeholder="الباسورد القديم"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                />
+                <input
+                  type="password"
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="الباسورد الجديد"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                />
+                {changePasswordError && (
+                  <div className="p-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl">
+                    {changePasswordError}
+                  </div>
+                )}
+              </>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowChangePasswordModal(false)}
+                className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
+              >
+                {changePasswordSuccess ? "إغلاق" : "إلغاء"}
+              </button>
+              {!changePasswordSuccess && (
+                <button
+                  onClick={async () => {
+                    setChangePasswordLoading(true);
+                    setChangePasswordError(null);
+                    const result = await changePassword(oldPasswordInput, newPasswordInput);
+                    setChangePasswordLoading(false);
+                    if (result.ok) {
+                      setChangePasswordSuccess(true);
+                      setOldPasswordInput("");
+                      setNewPasswordInput("");
+                    } else {
+                      setChangePasswordError(result.error || "فشل تغيير الباسورد");
+                    }
+                  }}
+                  disabled={changePasswordLoading || !oldPasswordInput || !newPasswordInput}
+                  className={`flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${changePasswordLoading || !oldPasswordInput || !newPasswordInput ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {changePasswordLoading ? (
+                    <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    "تغيير"
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

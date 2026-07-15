@@ -3,6 +3,8 @@ import { getDB, getDBError } from "./db";
 
 const router = Router();
 
+const DEFAULT_PASSWORD = process.env.OVERTIME_PASSWORD || "ot@2026";
+
 // Health check for DB
 router.get("/db-status", async (_req, res) => {
   const db = getDB();
@@ -96,6 +98,70 @@ router.post("/leave-balances", async (req, res) => {
     if (balances.length > 0) {
       await db.collection("leave_balances").insertMany(balances);
     }
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== OVERTIME PASSWORD ==========
+
+router.get("/overtime-password", async (_req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.json({ password: DEFAULT_PASSWORD });
+    const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
+    res.json({ password: doc?.value || DEFAULT_PASSWORD });
+  } catch (err: any) {
+    res.json({ password: DEFAULT_PASSWORD });
+  }
+});
+
+router.post("/verify-password", async (req, res) => {
+  try {
+    const db = getDB();
+    const storedPassword = DEFAULT_PASSWORD;
+    if (db) {
+      const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
+      if (doc?.value) {
+        return res.json({ valid: req.body.password === doc.value });
+      }
+    }
+    res.json({ valid: req.body.password === storedPassword });
+  } catch (err: any) {
+    res.json({ valid: req.body.password === DEFAULT_PASSWORD });
+  }
+});
+
+router.post("/change-password", async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "الباسورد القديم والجديد مطلوبين" });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ error: "الباسورد الجديد لازم يكون 4 أحرف على الأقل" });
+    }
+
+    let currentPassword = DEFAULT_PASSWORD;
+    const db = getDB();
+    if (db) {
+      const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
+      if (doc?.value) currentPassword = doc.value;
+    }
+
+    if (oldPassword !== currentPassword) {
+      return res.status(403).json({ error: "الباسورد القديم غير صحيح" });
+    }
+
+    if (db) {
+      await db.collection("settings").updateOne(
+        { docId: "overtime_password" },
+        { $set: { value: newPassword } },
+        { upsert: true }
+      );
+    }
+
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
