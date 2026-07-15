@@ -109,6 +109,7 @@ export interface EmployeeLeaveBalance {
 
 export interface OvertimeEntry {
   id: string;
+  employeeName: string;
   date: string;
   hours: number;
   notes: string;

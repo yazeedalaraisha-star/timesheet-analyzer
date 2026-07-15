@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Plus, Trash2, Clock, Calendar, TrendingUp, AlertCircle, Search, User, Users } from "lucide-react";
 import { OvertimeEntry } from "../types";
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
 }
 
 export default function OvertimeTracker({ entries, onUpdate }: Props) {
+  const [employeeName, setEmployeeName] = useState("");
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [date, setDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -15,6 +17,37 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [hours, setHours] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const uniqueNames = useMemo(() => {
+    const names = new Set(entries.map((e) => e.employeeName));
+    return Array.from(names).sort();
+  }, [entries]);
+
+  const filteredNames = useMemo(() => {
+    if (!employeeName.trim()) return uniqueNames;
+    return uniqueNames.filter((n) => n.includes(employeeName.trim()));
+  }, [uniqueNames, employeeName]);
+
+  const filteredEntries = useMemo(() => {
+    if (!searchQuery.trim()) return entries;
+    const q = searchQuery.trim();
+    return entries.filter((e) => e.employeeName.includes(q));
+  }, [entries, searchQuery]);
+
+  const perEmployeeSummary = useMemo(() => {
+    const map = new Map<string, { hours: number; days: number; entries: number }>();
+    for (const e of entries) {
+      const existing = map.get(e.employeeName) || { hours: 0, days: 0, entries: 0 };
+      existing.hours += e.hours;
+      existing.entries += 1;
+      map.set(e.employeeName, existing);
+    }
+    for (const [name, data] of map) {
+      data.days = Math.floor(data.hours / 8);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].hours - a[1].hours);
+  }, [entries]);
 
   const totalHours = entries.reduce((sum, e) => sum + e.hours, 0);
   const totalDays = Math.floor(totalHours / 8);
@@ -22,6 +55,10 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
   const handleAdd = () => {
     const h = parseFloat(hours);
+    if (!employeeName.trim()) {
+      setError("يرجى إدخال اسم الموظف");
+      return;
+    }
     if (!date) {
       setError("يرجى اختيار التاريخ");
       return;
@@ -37,6 +74,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
     const newEntry: OvertimeEntry = {
       id: "ot_" + Date.now(),
+      employeeName: employeeName.trim(),
       date,
       hours: h,
       notes: notes.trim(),
@@ -60,16 +98,6 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("ar-EG", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -85,7 +113,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 سجل العمل الإضافي
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                تسجيل ساعات العمل الإضافي — كل 8 ساعات = يوم إضافي
+                تسجيل ساعات العمل الإضافي لكل موظف — كل 8 ساعات = يوم إضافي
               </p>
             </div>
           </div>
@@ -93,7 +121,22 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">الموظفين</span>
+              <div className="flex items-baseline gap-1 pt-1">
+                <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{perEmployeeSummary.length}</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">شخص</span>
+              </div>
+            </div>
+            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+              <Users className="h-5 w-5" />
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
@@ -143,7 +186,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       {/* Progress Bar */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">تقدم تحويل الساعات لأيام</span>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">تقدم تحويل الساعات لأيام (لجميع الموظفين)</span>
           <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-lg">
             {remainingHours}/8 ساعات للتالي
           </span>
@@ -156,6 +199,43 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         </div>
       </div>
 
+      {/* Per-Employee Summary */}
+      {perEmployeeSummary.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
+            <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <span>ملخص كل موظف</span>
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {perEmployeeSummary.map(([name, data]) => (
+              <div
+                key={name}
+                className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition-all cursor-pointer"
+                onClick={() => setSearchQuery(name === searchQuery ? "" : name)}
+              >
+                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                  <User className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-900/40">
+                      {data.hours} ساعة
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/40">
+                      {data.days} يوم
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {data.entries} سجل
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Add Entry Form */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
@@ -163,7 +243,40 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           <span>إضافة سجل جديد</span>
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="relative">
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">اسم الموظف</label>
+            <input
+              type="text"
+              value={employeeName}
+              onChange={(e) => {
+                setEmployeeName(e.target.value);
+                setShowNameSuggestions(true);
+              }}
+              onFocus={() => setShowNameSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+              placeholder="اسم الموظف"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            {showNameSuggestions && filteredNames.length > 0 && (
+              <div className="absolute z-30 top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                {filteredNames.map((name) => (
+                  <button
+                    key={name}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setEmployeeName(name);
+                      setShowNameSuggestions(false);
+                    }}
+                    className="w-full text-right px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-all flex items-center gap-2"
+                  >
+                    <User className="h-3 w-3 text-slate-400" />
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div>
             <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">التاريخ</label>
             <input
@@ -216,27 +329,43 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
       {/* Entries Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
             <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <span>السجلات ({entries.length})</span>
+            <span>السجلات ({filteredEntries.length}{searchQuery ? ` من ${entries.length}` : ""})</span>
           </h3>
-          {entries.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
-            >
-              <Trash2 className="h-3 w-3" />
-              مسح الكل
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="بحث بالاسم..."
+                className="pr-8 pl-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all w-40"
+              />
+            </div>
+            {entries.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+              >
+                <Trash2 className="h-3 w-3" />
+                مسح الكل
+              </button>
+            )}
+          </div>
         </div>
 
-        {entries.length === 0 ? (
+        {filteredEntries.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500">
             <Clock className="h-10 w-10 mx-auto mb-2 opacity-30 text-slate-300 dark:text-slate-600" />
-            <p className="text-sm font-bold">لا توجد سجلات عمل إضافي</p>
-            <p className="text-xs mt-1">أضف سجلات باستخدام النموذج أعلاه</p>
+            <p className="text-sm font-bold">
+              {entries.length === 0 ? "لا توجد سجلات عمل إضافي" : "لا توجد نتائج مطابقة للبحث"}
+            </p>
+            <p className="text-xs mt-1">
+              {entries.length === 0 ? "أضف سجلات باستخدام النموذج أعلاه" : "جرّب تغيير كلمة البحث"}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -244,6 +373,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">
                   <th className="py-3 px-4 font-semibold">#</th>
+                  <th className="py-3 px-4 font-semibold">الموظف</th>
                   <th className="py-3 px-4 font-semibold">التاريخ</th>
                   <th className="py-3 px-4 font-semibold">اليوم</th>
                   <th className="py-3 px-4 font-semibold">الساعات</th>
@@ -252,7 +382,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
-                {entries.map((entry, idx) => {
+                {filteredEntries.map((entry, idx) => {
                   const d = new Date(entry.date);
                   const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
                   return (
@@ -261,7 +391,15 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                       className="hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-all"
                     >
                       <td className="py-3.5 px-4 text-xs font-bold text-slate-400 dark:text-slate-500">
-                        {entries.length - idx}
+                        {filteredEntries.length - idx}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded">
+                            <User className="h-3 w-3" />
+                          </div>
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{entry.employeeName}</span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-sm font-bold text-slate-800 dark:text-slate-200">
                         {entry.date}
@@ -293,15 +431,15 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               </tbody>
               <tfoot>
                 <tr className="bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700">
-                  <td colSpan={3} className="py-3 px-4 text-xs font-bold text-slate-600 dark:text-slate-300 text-left">
+                  <td colSpan={4} className="py-3 px-4 text-xs font-bold text-slate-600 dark:text-slate-300 text-left">
                     الإجمالي:
                   </td>
                   <td className="py-3 px-4">
                     <span className="text-sm font-black text-amber-600 dark:text-amber-400">
-                      {totalHours} ساعة
+                      {filteredEntries.reduce((s, e) => s + e.hours, 0)} ساعة
                     </span>
                     <span className="text-xs text-slate-400 dark:text-slate-500 mr-2">
-                      = {totalDays} يوم {remainingHours > 0 ? `و ${remainingHours} ساعات` : ""}
+                      = {Math.floor(filteredEntries.reduce((s, e) => s + e.hours, 0) / 8)} يوم
                     </span>
                   </td>
                   <td colSpan={2}></td>
