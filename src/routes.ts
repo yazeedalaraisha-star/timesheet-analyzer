@@ -102,6 +102,35 @@ router.post("/leave-balances", async (req, res) => {
   }
 });
 
+// ========== OVERTIME ==========
+
+router.get("/overtime", async (_req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.json([]);
+    const entries = await db.collection("overtime").find().sort({ date: -1 }).toArray();
+    res.json(entries);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/overtime", async (req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.status(503).json({ error: "قاعدة البيانات غير متصلة" });
+    const entries = req.body;
+    if (!Array.isArray(entries)) return res.status(400).json({ error: "Expected array" });
+    await db.collection("overtime").deleteMany({});
+    if (entries.length > 0) {
+      await db.collection("overtime").insertMany(entries);
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ========== POLICIES ==========
 
 router.get("/policies", async (_req, res) => {

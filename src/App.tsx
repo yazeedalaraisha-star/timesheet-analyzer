@@ -28,7 +28,7 @@ import {
   Globe,
   FileDown,
 } from "lucide-react";
-import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem } from "./types";
+import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
@@ -38,7 +38,10 @@ import {
   saveReportToDB,
   deleteReportFromDB,
   clearAllReportsFromDB,
+  fetchOvertimeFromDB,
+  saveOvertimeToDB,
 } from "./apiClient";
+import OvertimeTracker from "./components/OvertimeTracker";
 
 import { 
   ResponsiveContainer, 
@@ -158,7 +161,7 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  type ViewMode = "main";
+  type ViewMode = "main" | "overtime";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
 
   // Multiple images state
@@ -175,6 +178,22 @@ export default function App() {
 
   // Streaming progress state
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+
+  // Overtime state
+  const [overtimeEntries, setOvertimeEntries] = useState<OvertimeEntry[]>(() => {
+    try {
+      const stored = localStorage.getItem("overtime_entries");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleUpdateOvertime = (newEntries: OvertimeEntry[]) => {
+    setOvertimeEntries(newEntries);
+    try { localStorage.setItem("overtime_entries", JSON.stringify(newEntries)); } catch {}
+    if (dbAvailable) saveOvertimeToDB(newEntries).catch(() => {});
+  };
 
   // Load history on mount + check DB status
   useEffect(() => {
@@ -194,6 +213,11 @@ export default function App() {
           if (dbReports.length > 0) {
             setHistory(dbReports);
             localStorage.setItem("timesheet_reports_history", JSON.stringify(dbReports));
+          }
+          const dbOvertime = await fetchOvertimeFromDB();
+          if (dbOvertime.length > 0) {
+            setOvertimeEntries(dbOvertime);
+            localStorage.setItem("overtime_entries", JSON.stringify(dbOvertime));
           }
         } catch (e) {
           console.error("[DB] Failed to load data:", e);
@@ -738,6 +762,9 @@ export default function App() {
               <button onClick={() => setViewMode("main")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
                 <FileText className="h-3.5 w-3.5" />
               </button>
+              <button onClick={() => setViewMode("overtime")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="العمل الإضافي">
+                <Clock className="h-3.5 w-3.5" />
+              </button>
             </div>
 
             {/* Language Toggle */}
@@ -788,6 +815,13 @@ export default function App() {
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
+          {/* Overtime View */}
+          {viewMode === "overtime" && (
+            <div className="lg:col-span-12">
+              <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} />
+            </div>
+          )}
+
           {/* Main View */}
           {viewMode === "main" && (
           <>

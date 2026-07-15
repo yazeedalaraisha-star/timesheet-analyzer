@@ -1,4 +1,4 @@
-import { SavedReport, EmployeeLeaveBalance } from "./types";
+import { SavedReport, EmployeeLeaveBalance, OvertimeEntry } from "./types";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T | null> {
   try {
@@ -67,6 +67,19 @@ export async function savePoliciesToDB(policies: any): Promise<boolean> {
   const data = await apiFetch<{ ok: boolean }>("/api/policies", {
     method: "POST",
     body: JSON.stringify(policies),
+  });
+  return data?.ok ?? false;
+}
+
+export async function fetchOvertimeFromDB(): Promise<OvertimeEntry[]> {
+  const data = await apiFetch<OvertimeEntry[]>("/api/overtime");
+  return data ?? [];
+}
+
+export async function saveOvertimeToDB(entries: OvertimeEntry[]): Promise<boolean> {
+  const data = await apiFetch<{ ok: boolean }>("/api/overtime", {
+    method: "POST",
+    body: JSON.stringify(entries),
   });
   return data?.ok ?? false;
 }

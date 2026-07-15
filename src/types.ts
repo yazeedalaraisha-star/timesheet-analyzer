@@ -106,3 +106,10 @@ export interface EmployeeLeaveBalance {
   employeeName: string;
   balances: LeaveBalanceEntry[];
 }
+
+export interface OvertimeEntry {
+  id: string;
+  date: string;
+  hours: number;
+  notes: string;
+}
