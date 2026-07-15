@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { 
   Upload, 
   FileText, 
@@ -41,7 +41,8 @@ import {
   fetchOvertimeFromDB,
   saveOvertimeToDB,
 } from "./apiClient";
-import OvertimeTracker from "./components/OvertimeTracker";
+import { parseTimeToSeconds } from "./utils/timeUtils";
+const OvertimeTracker = React.lazy(() => import("./components/OvertimeTracker"));
 
 import { 
   ResponsiveContainer, 
@@ -420,18 +421,6 @@ export default function App() {
     }
   };
 
-  // Helper to parse time string to seconds
-  const parseTimeToSeconds = (t: string | null): number | null => {
-    if (!t) return null;
-    const parts = t.trim().split(":");
-    if (parts.length < 2) return null;
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    const s = parts[2] ? parseInt(parts[2], 10) : 0;
-    if (isNaN(h) || isNaN(m) || isNaN(s)) return null;
-    return h * 3600 + m * 60 + s;
-  };
-
   // Recalculate KPIs and row fields on client side for dynamic updates
   const recalculateRowAndKPIs = (updatedReports: any[]) => {
     if (!result) return;
@@ -720,7 +709,7 @@ export default function App() {
   }) || [];
 
   return (
-    <div id="app-root" className="min-h-screen bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-200">
+    <div id="app-root" className="min-h-screen bg-[#f5f6f8] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-slate-200 selection:text-slate-900 transition-colors duration-200">
       
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
@@ -728,19 +717,19 @@ export default function App() {
       </a>
 
       {/* Header Bar */}
-      <header id="app-header" className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 shadow-sm print:hidden transition-colors">
+      <header id="app-header" className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800 shadow-sm print:hidden transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-xl text-white shadow-md shadow-indigo-100 dark:shadow-none">
-              <FileText className="h-6 w-6" />
+            <div className="p-2.5 bg-slate-700 dark:bg-slate-600 rounded-xl text-white">
+              <FileText className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-l from-indigo-950 via-slate-900 to-slate-800 dark:from-white dark:to-slate-200 bg-clip-text text-transparent">
-                محلل كشوفات الدوام الذكي
+              <h1 className="text-lg font-extrabold tracking-tight text-slate-800 dark:text-white">
+                محلل كشوفات الدوام
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                أتمتة تحليل لقطات شاشة الحضور والغياب للغة العربية بالذكاء الاصطناعي
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                تحليل ذكي للحضور والانصراف باللغة العربية
               </p>
             </div>
           </div>
@@ -758,41 +747,43 @@ export default function App() {
             </div>
 
             {/* View Mode Navigation */}
-            <div className="hidden sm:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-              <button onClick={() => setViewMode("main")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
-                <FileText className="h-3.5 w-3.5" />
+            <div className="hidden sm:flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+              <button onClick={() => setViewMode("main")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
+                <FileText className="h-3.5 w-3.5 inline ml-1" />
+                التقرير
               </button>
-              <button onClick={() => setViewMode("overtime")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="العمل الإضافي">
-                <Clock className="h-3.5 w-3.5" />
+              <button onClick={() => setViewMode("overtime")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="العمل الإضافي">
+                <Clock className="h-3.5 w-3.5 inline ml-1" />
+                الإضافي
               </button>
             </div>
 
             {/* Language Toggle */}
             <button
               onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
               title={t("switchLang")}
             >
-              <Globe className="h-4.5 w-4.5" />
+              <Globe className="h-4 w-4" />
             </button>
 
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleTheme}
-              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
               title={dark ? t("lightMode") : t("darkMode")}
             >
-              {dark ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
             {/* History Toggle Button */}
             <button
               id="history-btn"
               onClick={() => setShowHistory(!showHistory)}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all border ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all border ${
                 showHistory 
-                  ? "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100" 
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-700"
+                  ? "bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-800 dark:border-slate-200" 
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-800"
               }`}
             >
               <History className="h-4 w-4" />
@@ -801,10 +792,10 @@ export default function App() {
 
             <a 
               href="#instructions" 
-              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all"
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
               title="Guide"
             >
-              <HelpCircle className="h-5 w-5" />
+              <HelpCircle className="h-4 w-4" />
             </a>
           </div>
 
@@ -812,13 +803,15 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" tabIndex={-1}>
+      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Overtime View */}
           {viewMode === "overtime" && (
             <div className="lg:col-span-12">
-              <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} />
+              <Suspense fallback={<div className="flex items-center justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+                <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} />
+              </Suspense>
             </div>
           )}
 
@@ -829,11 +822,11 @@ export default function App() {
             
             {/* Saved Reports Sidebar/Dropdown overlay */}
             {showHistory && (
-              <div id="history-panel" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-lg p-5 animate-fade-in-down">
+              <div id="history-panel" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-lg p-5 animate-fade-in-down">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
-                  <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold">
-                    <History className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    <span>التقارير السابقة المحفوظة</span>
+                  <div className="flex items-center gap-2 text-slate-700 dark:text-white font-bold text-sm">
+                    <History className="h-4 w-4 text-slate-400" />
+                    <span>التقارير المحفوظة</span>
                   </div>
                   {history.length > 0 && (
                     <button 
@@ -863,10 +856,10 @@ export default function App() {
                           setImagePreview("HISTORY");
                           setShowHistory(false);
                         }}
-                        className="group flex items-start justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 hover:border-indigo-100 dark:hover:border-indigo-900 cursor-pointer transition-all text-right"
+                        className="group flex items-start justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer transition-all text-right"
                       >
                         <div className="space-y-1">
-                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-900 dark:group-hover:text-indigo-300">
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white">
                             {item.result.employee_info.name}
                           </p>
                           <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
@@ -898,14 +891,14 @@ export default function App() {
             )}
 
             {/* Main Upload Box */}
-            <div id="upload-card" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-              <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/80 to-transparent dark:from-slate-800/20">
-                <h2 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Upload className="h-4.5 w-4.5 text-indigo-600 dark:text-indigo-400" />
+            <div id="upload-card" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+              <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+                <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                  <Upload className="h-4 w-4 text-slate-400" />
                   <span>تحميل كشف الدوام</span>
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  قم بسحب وإفلات لقطة شاشة جدول الحضور باللغة العربية أو تصفح ملفاتك
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                  اسحب لقطة الشاشة أو تصفح ملفاتك
                 </p>
               </div>
 
@@ -919,10 +912,10 @@ export default function App() {
                   aria-label="منطقة رفع الصورة"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('file-input-main')?.click(); } }}
-                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 ${
+                  className={`border border-dashed rounded-xl p-6 text-center transition-all focus:outline-none focus:ring-2 focus:ring-slate-300/50 ${
                     imagePreview && imagePreview !== "DEMO_MODE"
-                      ? "border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-950/10"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/40 dark:bg-slate-800/5 hover:bg-slate-50 dark:hover:bg-slate-800/10"
+                      ? "border-slate-300 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-800/20"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/40 dark:bg-slate-800/5"
                   }`}
                 >
                   {imagePreview && imagePreview !== "DEMO_MODE" ? (
@@ -930,18 +923,18 @@ export default function App() {
                       <img 
                         src={imagePreview} 
                         alt="كشف الدوام المرفوع" 
-                        className="max-h-48 mx-auto rounded-lg shadow-sm border border-slate-100 object-contain" 
+                        className="max-h-48 mx-auto rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 object-contain" 
                       />
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={handleReset}
-                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg border border-rose-100 transition-all"
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200/60 transition-all"
                         >
-                          إزالة الصورة
+                          إزالة
                         </button>
-                        <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer">
-                          تغيير الصورة
+                        <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer">
+                          تغيير
                           <input 
                             id="file-input-change"
                             type="file" 
@@ -954,20 +947,20 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-3 py-4">
-                      <div className="mx-auto w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-                        <Upload className="h-6 w-6" />
+                      <div className="mx-auto w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                        <Upload className="h-5 w-5" />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-slate-700">
+                        <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
                           اسحب لقطة الشاشة إلى هنا
                         </p>
-                        <p className="text-xs text-slate-400">
-                          تدعم الصور بصيغة PNG أو JPG أو JPEG
+                        <p className="text-[11px] text-slate-400">
+                          PNG، JPG، JPEG
                         </p>
                       </div>
                       <div>
-                        <label className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-100 transition-all cursor-pointer">
-                          اختر ملف من جهازك
+                        <label className="inline-flex items-center justify-center px-4 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer">
+                          اختر ملف
                           <input 
                             id="file-input-main"
                             type="file" 
@@ -983,22 +976,22 @@ export default function App() {
 
                 {/* Configuration Options */}
                 <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-3">
-                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>قواعد وسياسات العمل</span>
+                  <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>ساعات الدوام الرسمي</span>
                   </h3>
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                        بداية الدوام (من):
+                      <label className="block text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">
+                        البداية
                       </label>
                       <div className="relative">
                         <select 
                           value={officialStartTime}
                           onChange={(e) => setOfficialStartTime(e.target.value)}
                           aria-label="بداية الدوام الرسمي"
-                          className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
+                          className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all cursor-pointer"
                         >
                           {[...TIME_OPTIONS, ...(officialStartTime && !TIME_OPTIONS.includes(officialStartTime) ? [officialStartTime] : [])].sort().map((opt) => (
                             <option key={opt} value={opt} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
@@ -1010,15 +1003,15 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                        نهاية الدوام (إلى):
+                      <label className="block text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">
+                        النهاية
                       </label>
                       <div className="relative">
                         <select 
                           value={officialEndTime}
                           onChange={(e) => setOfficialEndTime(e.target.value)}
                           aria-label="نهاية الدوام الرسمي"
-                          className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
+                          className="w-full text-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2 py-1.5 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all cursor-pointer"
                         >
                           {[...TIME_OPTIONS, ...(officialEndTime && !TIME_OPTIONS.includes(officialEndTime) ? [officialEndTime] : [])].sort().map((opt) => (
                             <option key={opt} value={opt} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
@@ -1039,12 +1032,12 @@ export default function App() {
                   disabled={loading || !image}
                   aria-label="تحليل لقطة الشاشة"
                   aria-busy={loading}
-                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm shadow-md transition-all ${
+                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
                     loading 
-                      ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+                      ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
                       : !image 
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 hover:shadow-indigo-200 active:scale-[0.98]"
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white active:scale-[0.98]"
                   }`}
                 >
                   {loading ? (
@@ -1061,7 +1054,7 @@ export default function App() {
                 </button>
 
                 {error && (
-                  <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-xl flex items-start gap-2 animate-fade-in-up">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl flex items-start gap-2 animate-fade-in-up">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-rose-500" />
                     <span className="leading-relaxed">{error}</span>
                   </div>
@@ -1077,14 +1070,14 @@ export default function App() {
             
             {/* Empty State */}
             {!result && !loading && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-12 text-center space-y-5 transition-colors">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm">
-                  <FileText className="h-8 w-8" />
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-12 text-center space-y-4 transition-colors">
+                <div className="mx-auto w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                  <FileText className="h-7 w-7" />
                 </div>
                 <div className="max-w-md mx-auto space-y-2">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">في انتظار رفع كشف الدوام</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                    قم بتحميل لقطة شاشة لكشف الدوام من نظام الموارد البشرية لديكم لبدء معالجة واستخراج تقارير الحضور والإنصراف تلقائياً باستخدام الذكاء الاصطناعي.
+                  <h3 className="text-base font-bold text-slate-700 dark:text-white">في انتظار رفع كشف الدوام</h3>
+                  <p className="text-[13px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                    قم بتحميل لقطة شاشة لكشف الدوام لبدء التحليل واستخراج تقارير الحضور والانصراف.
                   </p>
                 </div>
               </div>
@@ -1092,14 +1085,14 @@ export default function App() {
 
             {/* Loading Skeleton */}
             {loading && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-8 space-y-6 animate-pulse transition-colors">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-8 space-y-6 animate-pulse transition-colors">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 text-indigo-500 animate-spin" />
+                  <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
                   </div>
                   <div className="space-y-2 flex-1">
                     <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-1/4"></div>
-                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold animate-pulse">{progressMessage || "جاري المعالجة..."}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold animate-pulse">{progressMessage || "جاري المعالجة..."}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
@@ -1121,21 +1114,18 @@ export default function App() {
               <div id="print-area" className="space-y-6">
                 
                 {/* Employee Header Info */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                  
-                  {/* Decorative Banner */}
-                  <div className="h-2.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 print:hidden"></div>
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                   
                   <div className="p-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
                       
                       <div className="flex items-center gap-3.5">
-                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
-                          <User className="h-6 w-6" />
+                        <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl">
+                          <User className="h-5 w-5" />
                         </div>
                         <div>
-                          <span className="text-[11px] font-bold text-indigo-600 tracking-wider uppercase">بطاقة معلومات الموظف</span>
-                          <h2 className="text-xl font-black text-slate-900 mt-0.5">
+                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase">بطاقة الموظف</span>
+                          <h2 className="text-lg font-black text-slate-800 dark:text-white mt-0.5">
                             {result.employee_info.name}
                           </h2>
                         </div>
@@ -1144,15 +1134,15 @@ export default function App() {
                       <div className="flex items-center gap-2 print:hidden">
                         <button
                           onClick={handlePrint}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
                         >
                           <Printer className="h-3.5 w-3.5" />
-                          <span>طباعة / تصدير PDF</span>
+                          <span>طباعة</span>
                         </button>
 
                         <button
                           onClick={handleExportPDF}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg border border-rose-600 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all"
                         >
                           <FileDown className="h-3.5 w-3.5" />
                           <span>PDF</span>
@@ -1160,18 +1150,18 @@ export default function App() {
 
                         <button
                           onClick={handleExportExcel}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg border border-emerald-600 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all"
                         >
                           <Download className="h-3.5 w-3.5" />
-                          <span>تصدير لجدول Excel</span>
+                          <span>Excel</span>
                         </button>
                         
                         <button
                           onClick={() => setShowRawJson(!showRawJson)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-all"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
                         >
                           {showRawJson ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          <span>{showRawJson ? "إخفاء بيانات JSON" : "معاينة JSON"}</span>
+                          <span>{showRawJson ? "إخفاء" : "JSON"}</span>
                         </button>
                       </div>
 
@@ -1181,37 +1171,37 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-5">
                       
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-slate-50 text-slate-400 rounded-lg">
+                        <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
                           <Hash className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400">الرقم الوظيفي</p>
-                          <p className="text-sm font-extrabold text-slate-700 mt-0.5">
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">الرقم الوظيفي</p>
+                          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
                             {result.employee_info.id || "غير متوفر"}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-slate-50 text-slate-400 rounded-lg">
+                        <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
                           <Briefcase className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400">المسمى الوظيفي</p>
-                          <p className="text-sm font-extrabold text-slate-700 mt-0.5">
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">المسمى الوظيفي</p>
+                          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
                             {result.employee_info.role || "غير متوفر"}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-slate-50 text-slate-400 rounded-lg">
+                        <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
                           <Clock className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400">فترة الدوام الرسمي المعتمد</p>
-                          <p className="text-sm font-extrabold text-slate-700 mt-0.5">
-                            من {officialStartTime} إلى {officialEndTime}
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">فترة الدوام</p>
+                          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
+                            {officialStartTime} — {officialEndTime}
                           </p>
                         </div>
                       </div>
@@ -1222,145 +1212,139 @@ export default function App() {
                 </div>
 
                 {/* KPIs Dashboard */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4" role="region" aria-label="مؤشرات الأداء الرئيسية (KPIs)">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" role="region" aria-label="مؤشرات الأداء الرئيسية">
                   
-                  {/* KPI 1: Correct Attendance Adherence */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -mr-6 -mt-6"></div>
+                  {/* KPI 1: Correct Attendance */}
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">نسبة الدوام الصحيح (الالتزام)</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">نسبة الالتزام</span>
                         <div className="flex items-baseline gap-1 pt-1">
-                          <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">
+                          <span className="text-3xl font-black text-slate-700 dark:text-white">
                             {result.kpis.correctAttendancePercentage ?? 100}%
                           </span>
                         </div>
                       </div>
-                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <TrendingUp className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>الأيام الخالية من التأخير والغياب والخروج المبكر</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>الأيام الخالية من المخالفات</span>
                     </div>
                   </div>
 
-                  {/* KPI 2: Total Delay Minutes */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-6 -mt-6"></div>
+                  {/* KPI 2: Total Delay */}
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">التأخير والخروج المبكر</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">التأخير والخروج المبكر</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
                             {result.kpis.totalDelayMinutes}
                           </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">د تأخير</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">د تأخير</span>
                           {result.kpis.totalEarlyOutMinutes ? (
                             <>
-                              <span className="text-xs text-slate-400 dark:text-slate-500 mx-1">/</span>
-                              <span className="text-lg font-bold text-violet-600 dark:text-violet-400">
+                              <span className="text-[10px] text-slate-300 dark:text-slate-600 mx-0.5">/</span>
+                              <span className="text-lg font-bold text-slate-500 dark:text-slate-400">
                                 {result.kpis.totalEarlyOutMinutes}
                               </span>
-                              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">د خروج</span>
+                              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">د خروج</span>
                             </>
                           ) : null}
                         </div>
                       </div>
-                      <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <Clock className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي دقائق التأخر الدخول والخروج المبكر</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>إجمالي دقائق التأخر والمغادرة</span>
                     </div>
                   </div>
 
-                  {/* KPI 3: Absent Without Excuse */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-6 -mt-6"></div>
+                  {/* KPI 3: Absences */}
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">غياب بدون عذر</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">غياب بدون عذر</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
                             {result.kpis.totalAbsences}
                           </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
                         </div>
                       </div>
-                      <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <AlertTriangle className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>أيام العمل التي لا تحوي قيود أو إجازات</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>أيام العمل بدون سجلات حضور</span>
                     </div>
                   </div>
 
-                  {/* KPI 4: Leaves Used */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-6 -mt-6"></div>
+                  {/* KPI 4: Leaves */}
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">الإجازات المستهلكة</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الإجازات المستهلكة</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                             {result.kpis.totalLeavesUsed}
                           </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
                         </div>
                       </div>
-                      <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <Calendar className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي أيام الإجازات المغطاة رسمياً</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>إجمالي أيام الإجازات الرسمية</span>
                     </div>
                   </div>
 
-                  {/* KPI 5: Total Actual Work Hours */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-teal-500/5 rounded-full -mr-6 -mt-6"></div>
+                  {/* KPI 5: Work Hours */}
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">ساعات العمل الفعلية</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">ساعات العمل الفعلية</span>
                         <div className="flex items-baseline gap-1 pt-1">
-                          <span className="text-2xl font-black text-teal-600 dark:text-teal-400">
+                          <span className="text-2xl font-black text-slate-700 dark:text-white">
                             {result.kpis.totalWorkHours ?? 0}
                           </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">ساعة</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
                         </div>
                       </div>
-                      <div className="p-2.5 bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <Clock className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي ساعات الدوام الفعلي المحسوبة</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>إجمالي ساعات الدوام المحسوبة</span>
                     </div>
                   </div>
 
                   {/* KPI 6: Duplicate Fingerprints */}
-                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden transition-colors">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full -mr-6 -mt-6"></div>
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500">بصمات مكررة</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">بصمات مكررة</span>
                         <div className="flex items-baseline gap-1 pt-1">
-                          <span className="text-2xl font-black text-orange-600 dark:text-orange-400">
+                          <span className="text-2xl font-black text-slate-700 dark:text-white">
                             {result.kpis.totalDuplicateFingerprintDays ?? 0}
                           </span>
-                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
                         </div>
                       </div>
-                      <div className="p-2.5 bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 rounded-xl">
+                      <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
                         <Fingerprint className="h-5 w-5" />
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>أيام بها حركات دخول أو خروج مكررة</span>
+                    <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>حركات دخول أو خروج مكررة</span>
                     </div>
                   </div>
 
@@ -1368,20 +1352,20 @@ export default function App() {
 
                 {/* Attendance Breakdown Pie Chart */}
                 {result && (
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                      <PieChart className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                      <span>{lang === "ar" ? "توزيع حالات الحضور" : "Attendance Breakdown"}</span>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
+                    <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                      <PieChart className="h-4 w-4 text-slate-400" />
+                      <span>توزيع حالات الحضور</span>
                     </h3>
                     <div className="h-56 w-full flex items-center justify-center">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
                             data={[
-                              { name: lang === "ar" ? "منتظم" : "Regular", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
-                              { name: lang === "ar" ? "تأخير" : "Late", value: result.lateDaysSummary?.length || 0, color: "#f59e0b" },
-                              { name: lang === "ar" ? "غياب" : "Absent", value: result.kpis.totalAbsences, color: "#ef4444" },
-                              { name: lang === "ar" ? "إجازة" : "Leave", value: result.kpis.totalLeavesUsed, color: "#6366f1" },
+                              { name: "منتظم", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
+                              { name: "تأخير", value: result.lateDaysSummary?.length || 0, color: "#d97706" },
+                              { name: "غياب", value: result.kpis.totalAbsences, color: "#ef4444" },
+                              { name: "إجازة", value: result.kpis.totalLeavesUsed, color: "#6b7280" },
                             ].filter(d => d.value > 0)}
                             cx="50%"
                             cy="50%"
@@ -1391,10 +1375,10 @@ export default function App() {
                             dataKey="value"
                           >
                             {[
-                              { name: lang === "ar" ? "منتظم" : "Regular", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
-                              { name: lang === "ar" ? "تأخير" : "Late", value: result.lateDaysSummary?.length || 0, color: "#f59e0b" },
-                              { name: lang === "ar" ? "غياب" : "Absent", value: result.kpis.totalAbsences, color: "#ef4444" },
-                              { name: lang === "ar" ? "إجازة" : "Leave", value: result.kpis.totalLeavesUsed, color: "#6366f1" },
+                              { name: "منتظم", value: result.kpis.perfectComplianceDays || 0, color: "#10b981" },
+                              { name: "تأخير", value: result.lateDaysSummary?.length || 0, color: "#d97706" },
+                              { name: "غياب", value: result.kpis.totalAbsences, color: "#ef4444" },
+                              { name: "إجازة", value: result.kpis.totalLeavesUsed, color: "#6b7280" },
                             ].filter(d => d.value > 0).map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
@@ -1421,13 +1405,12 @@ export default function App() {
                 )}
 
                 {/* Late Days & Early Exit Summary Card */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 transition-colors">
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 transition-colors">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                      <AlertCircle className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                      <span>ملخص الأيام المتأخر فيها والخروج المبكر</span>
+                    <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-slate-400" />
+                      <span>ملخص التأخير والمغادرة</span>
                     </h3>
-                    <span className="text-xs text-slate-400 dark:text-slate-500">تحليل تلقائي مع ربط التصاريح</span>
                   </div>
 
                   {(!result.lateDaysSummary || result.lateDaysSummary.length === 0) && (!result.kpis.totalEarlyOutMinutes) ? (
@@ -1440,25 +1423,25 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Late Days List */}
                       <div>
-                        <h4 className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-2.5 flex items-center gap-1.5">
+                        <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2.5 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                          أيام التأخير في الحضور ({result.lateDaysSummary?.length || 0} أيام):
+                          أيام التأخير ({result.lateDaysSummary?.length || 0}):
                         </h4>
                         {!result.lateDaysSummary || result.lateDaysSummary.length === 0 ? (
-                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-xl border border-slate-100 dark:border-slate-800">لا توجد أيام تأخير غير معذورة.</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">لا توجد أيام تأخير.</p>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {result.lateDaysSummary.map((item, idx) => (
-                              <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl border border-amber-100 dark:border-amber-900/40 bg-amber-50/10 dark:bg-amber-950/20 text-xs">
+                              <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-xs">
                                 <div className="font-extrabold text-slate-800 dark:text-slate-200">
                                   {item.dayName} <span className="text-slate-400 dark:text-slate-500 font-normal">({item.date})</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-400 px-2 py-0.5 rounded border border-amber-100 dark:border-amber-900">
+                                  <span className="font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                                     دخول: {item.time}
                                   </span>
-                                  <span className="font-bold text-rose-600 dark:text-rose-400">
-                                    تأخير {item.delayMinutes} د
+                                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                                    +{item.delayMinutes} د
                                   </span>
                                 </div>
                               </div>
@@ -1469,27 +1452,27 @@ export default function App() {
 
                       {/* Early Out Days List */}
                       <div>
-                        <h4 className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-2.5 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500"></span>
+                        <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2.5 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                           أيام المغادرة والخروج المبكر:
                         </h4>
                         {!result.kpis.totalEarlyOutMinutes ? (
-                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-xl border border-slate-100 dark:border-slate-800">لا توجد مغادرات أو خروج مبكر غير معذور.</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">لا توجد مغادرات.</p>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {result.daily_report
                               .filter(day => (day.earlyOutMinutes || 0) > 0)
                               .map((day, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl border border-violet-100 dark:border-violet-900/40 bg-violet-50/10 dark:bg-violet-950/20 text-xs">
+                                <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-xs">
                                   <div className="font-extrabold text-slate-800 dark:text-slate-200">
                                     {day.dayName} <span className="text-slate-400 dark:text-slate-500 font-normal">({day.date})</span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono bg-violet-50 dark:bg-violet-950/50 text-violet-800 dark:text-violet-400 px-2 py-0.5 rounded border border-violet-100 dark:border-violet-900">
+                                    <span className="font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                                       خروج: {day.checkOut}
                                     </span>
-                                    <span className="font-bold text-rose-600 dark:text-rose-400">
-                                      مبكر {day.earlyOutMinutes} د
+                                    <span className="font-bold text-slate-500 dark:text-slate-400">
+                                      -{day.earlyOutMinutes} د
                                     </span>
                                   </div>
                                 </div>
@@ -1503,30 +1486,30 @@ export default function App() {
 
                 {/* Duplicate Fingerprints Alert Section */}
                 {result.duplicateFingerprintsSummary && result.duplicateFingerprintsSummary.length > 0 && (
-                  <div className="bg-orange-50/50 dark:bg-orange-950/10 rounded-2xl border border-orange-200/80 dark:border-orange-900/40 shadow-sm p-6 space-y-4 transition-colors">
-                    <div className="flex items-center justify-between pb-3 border-b border-orange-200/60 dark:border-orange-900/30">
-                      <h3 className="font-bold text-orange-900 dark:text-orange-300 text-sm flex items-center gap-2">
-                        <Fingerprint className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                        <span>تنبيه: بصمات مكررة مكتشفة ({result.duplicateFingerprintsSummary.length} أيام)</span>
+                  <div className="bg-white dark:bg-slate-900 rounded-xl border border-amber-200/60 dark:border-amber-900/30 shadow-sm p-6 space-y-4 transition-colors">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                      <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                        <Fingerprint className="h-4 w-4 text-slate-400" />
+                        <span>بصمات مكررة ({result.duplicateFingerprintsSummary.length} أيام)</span>
                       </h3>
-                      <span className="text-[10px] font-bold text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-950/40 px-2.5 py-1 rounded-lg">
-                        مخاطرة
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded">
+                        تنبيه
                       </span>
                     </div>
-                    <p className="text-xs text-orange-700/80 dark:text-orange-400/70 leading-relaxed">
-                      تم اكتشاف حركات دخول أو خروج مكررة في بعض الأيام. قد يدل ذلك على مشاركة البصمة أو خطأ في التسجيل.
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      تم اكتشاف حركات دخول أو خروج مكررة في بعض الأيام.
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {result.duplicateFingerprintsSummary.map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3 rounded-xl border border-orange-200/60 dark:border-orange-900/30 bg-white/60 dark:bg-orange-950/10">
-                          <div className="p-1.5 bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 rounded-lg mt-0.5">
+                        <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+                          <div className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg mt-0.5">
                             <Fingerprint className="h-3.5 w-3.5" />
                           </div>
                           <div className="space-y-1">
-                            <p className="text-xs font-bold text-orange-900 dark:text-orange-200">
-                              {item.dayName} <span className="font-normal text-orange-500 dark:text-orange-500">({item.date})</span>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                              {item.dayName} <span className="font-normal text-slate-400 dark:text-slate-500">({item.date})</span>
                             </p>
-                            <p className="text-[11px] text-orange-700/80 dark:text-orange-400/70">{item.details}</p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">{item.details}</p>
                           </div>
                         </div>
                       ))}
@@ -1535,16 +1518,15 @@ export default function App() {
                 )}
 
                 {/* Recharts Daily Delay & Early Out Line Chart */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <div>
-                      <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                        <span>تحليل منحنى التأخير والخروج المبكر اليومي عبر الشهر</span>
+                      <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-slate-400" />
+                        <span>منحنى التأخير والخروج المبكر</span>
                       </h3>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">مخطط تفاعلي يوضح دقائق التأخير والخروج غير المعذورة لمراقبة اتجاهات التزام الموظف</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">دقائق التأخير والمغادرة غير المعذورة</p>
                     </div>
-                    <span className="self-start sm:self-auto text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg">تفاعلي</span>
                   </div>
 
                   <div className="h-72 w-full pt-4">
@@ -1559,7 +1541,7 @@ export default function App() {
                         }))}
                         margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis 
                           dataKey="name" 
                           stroke="#94a3b8" 
@@ -1606,18 +1588,18 @@ export default function App() {
                         <Line 
                           type="monotone" 
                           dataKey="دقائق التأخير" 
-                          stroke="#f59e0b" 
-                          strokeWidth={2.5} 
-                          activeDot={{ r: 6 }} 
-                          dot={{ r: 3, strokeWidth: 1.5 }}
+                          stroke="#d97706" 
+                          strokeWidth={2} 
+                          activeDot={{ r: 5 }} 
+                          dot={{ r: 2.5 }}
                         />
                         <Line 
                           type="monotone" 
                           dataKey="دقائق الخروج المبكر" 
-                          stroke="#8b5cf6" 
-                          strokeWidth={2.5} 
-                          activeDot={{ r: 6 }} 
-                          dot={{ r: 3, strokeWidth: 1.5 }}
+                          stroke="#6b7280" 
+                          strokeWidth={2} 
+                          activeDot={{ r: 5 }} 
+                          dot={{ r: 2.5 }}
                         />
                       </LineChart>
                     </ResponsiveContainer>
@@ -1650,16 +1632,16 @@ export default function App() {
                 )}
 
                 {/* Detailed Table Header and Filter */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
                   
-                  <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-b from-slate-50/50 to-transparent">
+                  <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
-                      <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                        <FileText className="h-4.5 w-4.5 text-indigo-600" />
-                        <span>تقرير السجل التفصيلي</span>
+                      <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-slate-400" />
+                        <span>السجل التفصيلي</span>
                       </h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        جدول ذكي للأيام التي تم تحليلها بالربط مع المغادرات والإجازات
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        جدول الأيام مع التحليل التفصيلي
                       </p>
                     </div>
 
@@ -1667,43 +1649,43 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-1.5 print:hidden" role="group" aria-label="فلاتر عرض التقرير">
                       <button
                         onClick={() => setFilter("all")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                           filter === "all"
-                            ? "bg-indigo-600 border-indigo-600 text-white"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            ? "bg-slate-700 border-slate-700 text-white dark:bg-slate-600 dark:border-slate-600"
+                            : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
                         الكل ({result.daily_report.length})
                       </button>
                       <button
                         onClick={() => setFilter("violations")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                           filter === "violations"
                             ? "bg-rose-600 border-rose-600 text-white"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        مخالفات وتأخير ({result.daily_report.filter(r => r.statusStyle === 'danger' || r.delayMinutes > 0 || r.status.includes('غياب')).length})
+                        مخالفات ({result.daily_report.filter(r => r.statusStyle === 'danger' || r.delayMinutes > 0 || r.status.includes('غياب')).length})
                       </button>
                       <button
                         onClick={() => setFilter("leaves")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                           filter === "leaves"
-                            ? "bg-amber-600 border-amber-600 text-white"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            ? "bg-amber-500 border-amber-500 text-white"
+                            : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        إجازات وتصاريح ({result.daily_report.filter(r => r.statusStyle === 'warning' || r.status.includes('إجازة') || r.status.includes('مغادرة')).length})
+                        إجازات ({result.daily_report.filter(r => r.statusStyle === 'warning' || r.status.includes('إجازة') || r.status.includes('مغادرة')).length})
                       </button>
                       <button
                         onClick={() => setFilter("regular")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                           filter === "regular"
                             ? "bg-emerald-600 border-emerald-600 text-white"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        حضور منتظم ({result.daily_report.filter(r => r.statusStyle === 'success' || r.status.includes('منتظم')).length})
+                        منتظرون ({result.daily_report.filter(r => r.statusStyle === 'success' || r.status.includes('منتظم')).length})
                       </button>
                     </div>
 
@@ -1713,7 +1695,7 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-right border-collapse" role="table" aria-label="تقرير السجل التفصيلي للحضور والانصراف">
                       <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">
+                        <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500">
                           <th className="py-3.5 px-4 font-semibold">اليوم والتاريخ</th>
                           <th className="py-3.5 px-4 font-semibold">وقت الدخول</th>
                           <th className="py-3.5 px-4 font-semibold">وقت الخروج</th>
@@ -1910,7 +1892,7 @@ export default function App() {
                                 </td>
                                 <td className="py-4 px-4 text-xs font-medium text-slate-500 max-w-[240px] truncate" title={row.note}>
                                   {isEditing ? (
-                                    <span className="text-indigo-600 font-bold animate-pulse">تعديل نشط...</span>
+                                    <span className="text-indigo-600 font-bold animate-pulse">تعديل...</span>
                                   ) : (
                                     row.note || <span className="text-slate-300">-</span>
                                   )}
@@ -1920,14 +1902,14 @@ export default function App() {
                                     <div className="flex items-center justify-center gap-1.5">
                                       <button 
                                         onClick={() => handleSaveEdit(originalIndex)}
-                                        className="p-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-all shadow-sm flex items-center justify-center"
+                                        className="p-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg transition-all flex items-center justify-center"
                                         title="حفظ التعديلات"
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
                                       </button>
                                       <button 
                                         onClick={handleCancelEdit}
-                                        className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-all shadow-sm flex items-center justify-center"
+                                        className="p-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg transition-all flex items-center justify-center"
                                         title="إلغاء"
                                       >
                                         <XCircle className="w-4 h-4" />
@@ -1937,7 +1919,7 @@ export default function App() {
                                     !row.isWeekend && (
                                       <button 
                                         onClick={() => handleStartEdit(originalIndex, row)}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all inline-flex items-center justify-center"
+                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all inline-flex items-center justify-center"
                                         title="تعديل السجل يدوياً"
                                       >
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -1956,9 +1938,9 @@ export default function App() {
                   </div>
 
                   {/* Table Footer Stats Summary */}
-                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row justify-between text-xs text-slate-400 gap-2 font-medium">
-                    <span>كافة البيانات خضعت لعملية توحيد وتنظيف الأرقام الشرقية/الغربية رياضياً.</span>
-                    <span>إجمالي الأيام المعروضة: {filteredDailyReport.length} يوم</span>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between text-[11px] text-slate-400 dark:text-slate-500 gap-2">
+                    <span>جميع البيانات خاضعة لعملية توحيد الأرقام.</span>
+                    <span>إجمالي الأيام: {filteredDailyReport.length} يوم</span>
                   </div>
 
                 </div>
@@ -1967,29 +1949,29 @@ export default function App() {
             )}
 
             {/* Explanatory Guide Section / System Info */}
-            <div id="instructions" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:hidden transition-colors">
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <HelpCircle className="h-4.5 w-4.5 text-indigo-600 dark:text-indigo-400" />
+            <div id="instructions" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:hidden transition-colors">
+              <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                <HelpCircle className="h-4 w-4 text-slate-400" />
                 <span>{t("howItWorks")}</span>
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
                 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">1</div>
-                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step1Title")}</h4>
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">1</div>
+                  <h4 className="font-bold text-slate-600 dark:text-slate-300">{t("step1Title")}</h4>
                   <p>{t("step1Desc")}</p>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">2</div>
-                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step2Title")}</h4>
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">2</div>
+                  <h4 className="font-bold text-slate-600 dark:text-slate-300">{t("step2Title")}</h4>
                   <p>{t("step2Desc")}</p>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">3</div>
-                  <h4 className="font-bold text-slate-700 dark:text-slate-300">{t("step3Title")}</h4>
+                  <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">3</div>
+                  <h4 className="font-bold text-slate-600 dark:text-slate-300">{t("step3Title")}</h4>
                   <p>{t("step3Desc")}</p>
                 </div>
 
@@ -2005,10 +1987,10 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-100 py-6 mt-12 text-center text-xs text-slate-400 font-medium print:hidden">
+      <footer className="bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden">
         <div className="max-w-7xl mx-auto px-4">
-          <p>أتمتة تحليل كشوفات الدوام باللغة العربية © {new Date().getFullYear()}</p>
-          <p className="mt-1 text-slate-500 font-bold">YAZEED AL-ARAISHA</p>
+          <p>محلل كشوفات الدوام © {new Date().getFullYear()}</p>
+          <p className="mt-1 font-bold text-slate-500 dark:text-slate-400">YAZEED AL-ARAISHA</p>
         </div>
       </footer>
 

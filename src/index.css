@@ -7,6 +7,19 @@
   --font-sans: "Cairo", "Tajawal", ui-sans-serif, system-ui, sans-serif;
   --animate-fade-in-down: fade-in-down 0.3s ease-out;
   --animate-fade-in-up: fade-in-up 0.3s ease-out;
+  --color-primary: #4b6584;
+  --color-primary-light: #778ca3;
+  --color-primary-dark: #2c3e50;
+  --color-accent: #45aaf2;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8f9fa;
+  --color-border: #e9ecef;
+  --color-text: #2d3436;
+  --color-text-muted: #636e72;
+  --color-success: #00b894;
+  --color-warning: #fdcb6e;
+  --color-danger: #e17055;
+  --color-info: #74b9ff;
 }
 
 /* Custom CSS to handle Right-to-Left (RTL) styling and smooth scroll */

@@ -6,6 +6,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { connectDB } from "./src/db";
 import apiRouter from "./src/routes";
+import { processAttendanceData } from "./src/analysis";
 
 dotenv.config();
 
@@ -43,7 +44,7 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Clean up old entries every 5 minutes
-setInterval(() => {
+const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [ip, record] of rateLimitMap.entries()) {
     if (now > record.resetTime) {
@@ -51,113 +52,6 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
-
-// Helpers for Arabic/Eastern numerals conversion
-function cleanArabicNumbers(str: string): string {
-  if (!str) return "";
-  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
-  let cleaned = str;
-  for (let i = 0; i < 10; i++) {
-    cleaned = cleaned.replace(arabicNumbers[i], String(i));
-  }
-  return cleaned;
-}
-
-// Parse date in format DD-MM-YYYY or similar
-function parseDate(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  const cleanStr = cleanArabicNumbers(dateStr).trim();
-  
-  // Try DD-MM-YYYY or DD/MM/YYYY
-  const parts = cleanStr.split(/[-/.]/);
-  if (parts.length === 3) {
-    // If year is first (YYYY-MM-DD)
-    if (parts[0].length === 4) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1; // 0-indexed
-      const day = parseInt(parts[2], 10);
-      const date = new Date(year, month, day);
-      return isNaN(date.getTime()) ? null : date;
-    }
-    // If year is last (DD-MM-YYYY)
-    if (parts[2].length === 4 || parts[2].length === 2) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1; // 0-indexed
-      let year = parseInt(parts[2], 10);
-      if (year < 100) {
-        year += 2000; // assume 20xx
-      }
-      const date = new Date(year, month, day);
-      return isNaN(date.getTime()) ? null : date;
-    }
-  }
-
-  // Fallback to native parsing
-  const timestamp = Date.parse(cleanStr);
-  if (!isNaN(timestamp)) {
-    return new Date(timestamp);
-  }
-  return null;
-}
-
-// Parse time string to seconds from midnight (handles 12h AM/PM and 24h)
-function parseTimeToSeconds(timeStr: string): number | null {
-  if (!timeStr) return null;
-  let cleanStr = cleanArabicNumbers(timeStr).trim();
-  
-  // Detect AM/PM before stripping
-  let isPM = false;
-  let hasAMPM = false;
-  const pmMatch = cleanStr.match(/(?:pm|م$|مساءً?|م\s*$)/i);
-  const amMatch = cleanStr.match(/(?:am|ص$|صباحاً?|ص\s*$)/i);
-  if (pmMatch) { isPM = true; hasAMPM = true; }
-  if (amMatch) { hasAMPM = true; }
-  
-  // Strip AM/PM markers
-  cleanStr = cleanStr.replace(/[أا]م|[بب]م|صباحا|مساء|AM|PM|ص(?=\s|$)|م(?=\s|$)/gi, "").trim();
-  
-  const parts = cleanStr.split(':');
-  if (parts.length >= 2) {
-    let hours = parseInt(parts[0], 10);
-    const minutes = parseInt(parts[1], 10);
-    const seconds = parts.length > 2 ? parseInt(parts[2], 10) : 0;
-    
-    if (isNaN(hours) || isNaN(minutes) || isNaN(seconds)) return null;
-    
-    // Convert 12-hour to 24-hour
-    if (hasAMPM) {
-      if (isPM && hours < 12) hours += 12;
-      if (!isPM && hours === 12) hours = 0;
-    }
-    
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-    
-    return hours * 3600 + minutes * 60 + seconds;
-  }
-  return null;
-}
-
-// Format Date object to key YYYY-MM-DD
-function formatDateKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-// Format Date object to display format DD-MM-YYYY
-function formatDateDisplay(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${d}-${m}-${y}`;
-}
-
-// Get Arabic day name for a date
-function getArabicDayName(date: Date): string {
-  const days = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-  return days[date.getDay()];
-}
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -241,7 +135,16 @@ async function startServer() {
 
   // Security headers
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }));
 
@@ -252,7 +155,7 @@ async function startServer() {
   const API_KEY = process.env.API_KEY;
   if (API_KEY) {
     app.use("/api", (req, res, next) => {
-      const providedKey = req.headers["x-api-key"] || req.query.api_key;
+      const providedKey = req.headers["x-api-key"];
       if (!providedKey || providedKey !== API_KEY) {
         return res.status(401).json({
           error: "مفتاح الوصول (API Key) غير صالح أو مفقود."
@@ -434,410 +337,7 @@ async function startServer() {
       extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       const rawExtracted = JSON.parse(extractedText.trim());
 
-      // Let's implement the Business Logic and Cleaning!
-      
-      // 1. Employee Info
-      const employee_info = {
-        id: cleanArabicNumbers(rawExtracted.employee_info?.id || "").trim() || "غير معروف",
-        name: (rawExtracted.employee_info?.name || "غير معروف").trim(),
-        role: (rawExtracted.employee_info?.role || "غير معروف").trim()
-      };
-
-      // 2. Normalize Official Start & End Times
-      const officialStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600); // Default to 08:00:00
-      const officialEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600); // Default to 17:00:00
-
-      // 3. Normalized Collections
-      const attendanceList = (rawExtracted.attendance_records || []).map((rec: any) => {
-        return {
-          day: (rec.day || "").trim(),
-          date: cleanArabicNumbers(rec.date || "").trim(),
-          time: cleanArabicNumbers(rec.time || "").trim(),
-          type: (rec.type || "").trim() // "حضور" or "خروج"
-        };
-      });
-
-      const permissionsList = (rawExtracted.permissions || []).map((perm: any) => {
-        return {
-          date: cleanArabicNumbers(perm.date || "").trim(),
-          start_time: cleanArabicNumbers(perm.start_time || "").trim(),
-          end_time: cleanArabicNumbers(perm.end_time || "").trim()
-        };
-      });
-
-      const leavesList = (rawExtracted.leaves || []).map((lv: any) => {
-        return {
-          start_date: cleanArabicNumbers(lv.start_date || "").trim(),
-          end_date: cleanArabicNumbers(lv.end_date || "").trim(),
-          leave_type: (lv.leave_type || "إجازة").trim()
-        };
-      });
-
-      // Group attendance records by normalized date
-      const attendanceByDate: Record<string, { checkIn: any; checkOut: any; checkInCount: number; checkOutCount: number }> = {};
-      attendanceList.forEach((rec: any) => {
-        const parsedD = parseDate(rec.date);
-        if (!parsedD) return;
-        const dateKey = formatDateKey(parsedD);
-        
-        if (!attendanceByDate[dateKey]) {
-          attendanceByDate[dateKey] = { checkIn: null, checkOut: null, checkInCount: 0, checkOutCount: 0 };
-        }
-
-        const normType = (rec.type === "حضور" || rec.type.includes("دخول") || rec.type.includes("قدوم")) ? "حضور" : (rec.type === "خروج" || rec.type.includes("انصراف") || rec.type.includes("مغادرة")) ? "خروج" : "";
-        if (!normType) return;
-
-        if (normType === "حضور") {
-          attendanceByDate[dateKey].checkInCount++;
-          // If multiple checks, keep the earliest
-          if (!attendanceByDate[dateKey].checkIn) {
-            attendanceByDate[dateKey].checkIn = rec;
-          } else {
-            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkIn.time) || 999999;
-            const newSec = parseTimeToSeconds(rec.time) || 999999;
-            if (newSec < currentSec) {
-              attendanceByDate[dateKey].checkIn = rec;
-            }
-          }
-        } else if (normType === "خروج") {
-          attendanceByDate[dateKey].checkOutCount++;
-          // If multiple check-outs, keep the latest
-          if (!attendanceByDate[dateKey].checkOut) {
-            attendanceByDate[dateKey].checkOut = rec;
-          } else {
-            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkOut.time) || 0;
-            const newSec = parseTimeToSeconds(rec.time) || 0;
-            if (newSec > currentSec) {
-              attendanceByDate[dateKey].checkOut = rec;
-            }
-          }
-        }
-      });
-
-      // Helper to check if a date falls inside a leave range
-      const isDateInLeave = (date: Date): { inLeave: boolean; type: string } => {
-        const dTime = date.getTime();
-        for (const lv of leavesList) {
-          const startD = parseDate(lv.start_date);
-          const endD = parseDate(lv.end_date);
-          if (startD && endD) {
-            // Set times to midnight to compare dates safely
-            const sTime = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime();
-            const eTime = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime();
-            const curTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-            if (curTime >= sTime && curTime <= eTime) {
-              return { inLeave: true, type: lv.leave_type };
-            }
-          }
-        }
-        return { inLeave: false, type: "" };
-      };
-
-      // Find the date range spanned by the timesheet.
-      // If no attendance records, default to the current month's start/end dates.
-      let startDate = new Date();
-      let endDate = new Date();
-      let hasRecords = false;
-
-      const validParsedDates = attendanceList
-        .map((rec: any) => parseDate(rec.date))
-        .filter((d: Date | null) => d !== null) as Date[];
-
-      if (validParsedDates.length > 0) {
-        hasRecords = true;
-        let minTime = validParsedDates[0].getTime();
-        let maxTime = validParsedDates[0].getTime();
-        validParsedDates.forEach(d => {
-          const t = d.getTime();
-          if (t < minTime) minTime = t;
-          if (t > maxTime) maxTime = t;
-        });
-        startDate = new Date(minTime);
-        endDate = new Date(maxTime);
-      } else {
-        // Fallback: 1st of current month to current date
-        startDate = new Date();
-        startDate.setDate(1);
-      }
-
-      // Safeguard against runaway date generation
-      const maxDays = 31;
-      const daysCount = Math.min(
-        maxDays,
-        Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1
-      );
-
-      const dailyReports: any[] = [];
-      let totalDelayMinutes = 0;
-      let totalEarlyOutMinutes = 0;
-      let totalAbsences = 0;
-      let totalLeavesUsed = 0;
-      let totalWorkingDays = 0;
-      let perfectComplianceDays = 0;
-      let totalWorkHours = 0;
-
-      const lateDaysSummary: any[] = [];
-      const duplicateFingerprintsSummary: any[] = [];
-      let totalDuplicateFingerprintDays = 0;
-
-      // Generate report day by day
-      for (let i = 0; i < daysCount; i++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + i);
-
-        const dateKey = formatDateKey(currentDate);
-        const dayOfWeek = currentDate.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-        const dayArabic = getArabicDayName(currentDate);
-        const isWeekend = dayOfWeek === 5 || dayOfWeek === 6; // Friday and Saturday
-
-        if (!isWeekend) {
-          totalWorkingDays++;
-        }
-
-        const attendance = attendanceByDate[dateKey];
-        const { inLeave, type: leaveType } = isDateInLeave(currentDate);
-
-        let hasPermission = false;
-        let permissionDetails = "";
-        for (const perm of permissionsList) {
-          const pDate = parseDate(perm.date);
-          if (pDate && formatDateKey(pDate) === dateKey) {
-            hasPermission = true;
-            permissionDetails = `مغادرة من ${perm.start_time} إلى ${perm.end_time}`;
-            break;
-          }
-        }
-
-        let statusText = "منتظم";
-        let statusStyle = "success"; // success, danger, warning, secondary
-        let delayMinutes = 0;
-        let earlyOutMinutes = 0;
-        let note = "";
-        const checkInTime = attendance?.checkIn?.time || null;
-        const checkOutTime = attendance?.checkOut?.time || null;
-
-        if (attendance) {
-          let hasViolation = false;
-          let delayMsg = "";
-          let earlyMsg = "";
-
-          if (attendance.checkInCount > 1) {
-            note += `تنبيه: تم رصد حركتي دخول (${attendance.checkInCount} مرات). `;
-          }
-          if (attendance.checkOutCount > 1) {
-            note += `تنبيه: تم رصد حركتي خروج (${attendance.checkOutCount} مرات). `;
-          }
-
-          // Check In Analysis
-          if (checkInTime) {
-            const checkInSec = parseTimeToSeconds(checkInTime);
-            if (checkInSec !== null && checkInSec > officialStartSec) {
-              // Delayed! Let's check for permission
-              let excusedByPermission = false;
-              let coveringPermission: any = null;
-
-              for (const perm of permissionsList) {
-                const pDate = parseDate(perm.date);
-                if (pDate && formatDateKey(pDate) === dateKey) {
-                  const pStartSec = parseTimeToSeconds(perm.start_time);
-                  const pEndSec = parseTimeToSeconds(perm.end_time);
-
-                  // A permission covers the delay if it starts at or before official start time
-                  // and covers the actual arrival time.
-                  if (pStartSec !== null && pEndSec !== null) {
-                    if (pStartSec <= officialStartSec && pEndSec >= checkInSec) {
-                      excusedByPermission = true;
-                      coveringPermission = perm;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (excusedByPermission) {
-                delayMsg = "تأخير معذور بمغادرة";
-                note += `مغادرة رسمية من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
-              } else {
-                delayMinutes = Math.ceil((checkInSec - officialStartSec) / 60);
-                totalDelayMinutes += delayMinutes;
-                delayMsg = `تأخير ${delayMinutes} دقيقة`;
-                hasViolation = true;
-                note += "تأخير غير معذور. ";
-                
-                lateDaysSummary.push({
-                  date: formatDateDisplay(currentDate),
-                  dayName: dayArabic,
-                  delayMinutes,
-                  time: checkInTime
-                });
-              }
-            }
-          } else {
-            hasViolation = true;
-            delayMsg = "بدون دخول";
-            note += "لم يتم رصد حركة دخول. ";
-          }
-
-          // Check Out Analysis (To check for early checkout)
-          if (checkOutTime) {
-            const checkOutSec = parseTimeToSeconds(checkOutTime);
-            if (checkOutSec !== null && checkOutSec < officialEndSec) {
-              // Left early! Check if they have an afternoon permission
-              let excusedByPermission = false;
-              let coveringPermission: any = null;
-
-              for (const perm of permissionsList) {
-                const pDate = parseDate(perm.date);
-                if (pDate && formatDateKey(pDate) === dateKey) {
-                  const pStartSec = parseTimeToSeconds(perm.start_time);
-                  const pEndSec = parseTimeToSeconds(perm.end_time);
-
-                  // Covers early checkout if the permission starts at or before checkout and goes to or after official end
-                  if (pStartSec !== null && pEndSec !== null) {
-                    if (pStartSec <= checkOutSec && pEndSec >= officialEndSec) {
-                      excusedByPermission = true;
-                      coveringPermission = perm;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (excusedByPermission) {
-                earlyMsg = "خروج مبكر معذور";
-                note += `مغادرة خروج من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
-              } else {
-                earlyOutMinutes = Math.ceil((officialEndSec - checkOutSec) / 60);
-                totalEarlyOutMinutes += earlyOutMinutes;
-                earlyMsg = `خروج مبكر ${earlyOutMinutes} دقيقة`;
-                hasViolation = true;
-                note += `خرج مبكراً بـ ${earlyOutMinutes} دقيقة. `;
-              }
-            }
-          } else {
-            // No checkout registered
-            // For compliance, we can notice it but let's not double punish if they did check in on time
-            note += "لم يتم رصد حركة خروج. ";
-          }
-
-          // Final daily status text composition
-          if (hasViolation) {
-            statusStyle = "danger";
-            const parts = [];
-            if (delayMinutes > 0) parts.push(`تأخير ${delayMinutes} د`);
-            if (earlyOutMinutes > 0) parts.push(`خروج مبكر ${earlyOutMinutes} د`);
-            if (parts.length === 0) {
-              parts.push("غير ملتزم");
-            }
-            statusText = parts.join(" و ");
-          } else {
-            statusStyle = "success";
-            statusText = delayMsg && delayMsg.includes("معذور") ? "حضور (تأخير معذور)" : "حضور منتظم";
-            if (!isWeekend) {
-              perfectComplianceDays++;
-            }
-          }
-
-        } else {
-          // No attendance records at all on this day
-          if (isWeekend) {
-            statusText = "عطلة نهاية الأسبوع";
-            statusStyle = "secondary";
-          } else {
-            // It's a working day
-            if (inLeave) {
-              statusText = `إجازة رسمية (${leaveType})`;
-              statusStyle = "warning";
-              totalLeavesUsed++;
-              perfectComplianceDays++; // leaves are excused, so they count as "compliant/excused"
-              note = `مغطى بإجازة: ${leaveType}`;
-            } else {
-              statusText = "غياب بدون عذر";
-              statusStyle = "danger";
-              totalAbsences++;
-              note = "لم يتم رصد أي حركات حضور أو خروج";
-            }
-          }
-        }
-
-        let dailyWorkHours = 0;
-        if (checkInTime && checkOutTime) {
-          const inSec = parseTimeToSeconds(checkInTime);
-          const outSec = parseTimeToSeconds(checkOutTime);
-          if (inSec !== null && outSec !== null && outSec > inSec) {
-            dailyWorkHours = Number(((outSec - inSec) / 3600).toFixed(2));
-            totalWorkHours += dailyWorkHours;
-          }
-        }
-
-         dailyReports.push({
-          date: formatDateDisplay(currentDate),
-          dayName: dayArabic,
-          checkIn: checkInTime,
-          checkOut: checkOutTime,
-          checkInCount: attendance?.checkInCount || 0,
-          checkOutCount: attendance?.checkOutCount || 0,
-          hasLeave: inLeave,
-          leaveType: inLeave ? leaveType : null,
-          hasPermission,
-          permissionDetails,
-          workHours: dailyWorkHours,
-          status: statusText,
-          statusStyle,
-          delayMinutes,
-          earlyOutMinutes,
-          note: note.trim(),
-          isWeekend
-        });
-      }
-
-      // Detect duplicate fingerprints (بصمات مكررة)
-      for (const report of dailyReports) {
-        if (report.checkInCount > 1 || report.checkOutCount > 1) {
-          totalDuplicateFingerprintDays++;
-          const details: string[] = [];
-          if (report.checkInCount > 1) {
-            details.push(`دخول ${report.checkInCount} مرات`);
-          }
-          if (report.checkOutCount > 1) {
-            details.push(`خروج ${report.checkOutCount} مرات`);
-          }
-          duplicateFingerprintsSummary.push({
-            date: report.date,
-            dayName: report.dayName,
-            checkInCount: report.checkInCount,
-            checkOutCount: report.checkOutCount,
-            details: details.join(" و ")
-          });
-        }
-      }
-
-      // Calculate Adherence Rate Percentage
-      // Adherence rate = (Perfect compliant working days) / (Total working days) * 100
-      let correctAttendancePercentage = 100;
-      if (totalWorkingDays > 0) {
-        correctAttendancePercentage = Math.round((perfectComplianceDays / totalWorkingDays) * 100);
-      }
-      
-      const results = {
-        employee_info,
-        kpis: {
-          totalDelayMinutes,
-          totalEarlyOutMinutes,
-          totalAbsences,
-          totalLeavesUsed,
-          totalWorkingDays,
-          perfectComplianceDays,
-          correctAttendancePercentage,
-          totalWorkHours: Number(totalWorkHours.toFixed(1)),
-          totalDuplicateFingerprintDays
-        },
-        lateDaysSummary,
-        duplicateFingerprintsSummary,
-        daily_report: dailyReports,
-        extracted_data: rawExtracted
-      };
-
+      const results = processAttendanceData(rawExtracted, officialStartTime, officialEndTime);
       return res.json(results);
 
     } catch (error: any) {
@@ -846,6 +346,7 @@ async function startServer() {
         error: error.message || "حدث خطأ غير متوقع أثناء معالجة كشف الدوام."
       });
     }
+
   });
 
   // Streaming analysis endpoint (SSE)
@@ -878,6 +379,11 @@ async function startServer() {
       if (estimatedSizeBytes > MAX_IMAGE_SIZE_BYTES) {
         return res.status(413).json({
           error: `حجم الصورة يتجاوز الحد المسموح (${MAX_IMAGE_SIZE_MB} ميغابايت).`
+        });
+      }
+      if (estimatedSizeBytes < 5120) {
+        return res.status(400).json({
+          error: "الصورة صغيرة جداً وربما غير صالحة. يرجى رفع صورة كشف دوام حقيقية."
         });
       }
 
@@ -991,298 +497,7 @@ async function startServer() {
       extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       const rawExtracted = JSON.parse(extractedText);
 
-      // --- Business Logic (same as non-streaming) ---
-      const employee_info = {
-        id: cleanArabicNumbers(rawExtracted.employee_info?.id || "").trim() || "غير معروف",
-        name: (rawExtracted.employee_info?.name || "غير معروف").trim(),
-        role: (rawExtracted.employee_info?.role || "غير معروف").trim()
-      };
-
-      const officialStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600);
-      const officialEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600);
-
-      const attendanceList = (rawExtracted.attendance_records || []).map((rec: any) => ({
-        day: (rec.day || "").trim(),
-        date: cleanArabicNumbers(rec.date || "").trim(),
-        time: cleanArabicNumbers(rec.time || "").trim(),
-        type: (rec.type || "").trim()
-      }));
-
-      const permissionsList = (rawExtracted.permissions || []).map((perm: any) => ({
-        date: cleanArabicNumbers(perm.date || "").trim(),
-        start_time: cleanArabicNumbers(perm.start_time || "").trim(),
-        end_time: cleanArabicNumbers(perm.end_time || "").trim()
-      }));
-
-      const leavesList = (rawExtracted.leaves || []).map((lv: any) => ({
-        start_date: cleanArabicNumbers(lv.start_date || "").trim(),
-        end_date: cleanArabicNumbers(lv.end_date || "").trim(),
-        leave_type: (lv.leave_type || "إجازة").trim()
-      }));
-
-      const attendanceByDate: Record<string, { checkIn: any; checkOut: any; checkInCount: number; checkOutCount: number }> = {};
-      attendanceList.forEach((rec: any) => {
-        const parsedD = parseDate(rec.date);
-        if (!parsedD) return;
-        const dateKey = formatDateKey(parsedD);
-        if (!attendanceByDate[dateKey]) {
-          attendanceByDate[dateKey] = { checkIn: null, checkOut: null, checkInCount: 0, checkOutCount: 0 };
-        }
-        const normType = (rec.type === "حضور" || rec.type.includes("دخول") || rec.type.includes("قدوم")) ? "حضور" : (rec.type === "خروج" || rec.type.includes("انصراف") || rec.type.includes("مغادرة")) ? "خروج" : "";
-        if (!normType) return;
-        if (normType === "حضور") {
-          attendanceByDate[dateKey].checkInCount++;
-          if (!attendanceByDate[dateKey].checkIn) {
-            attendanceByDate[dateKey].checkIn = rec;
-          } else {
-            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkIn.time) || 999999;
-            const newSec = parseTimeToSeconds(rec.time) || 999999;
-            if (newSec < currentSec) attendanceByDate[dateKey].checkIn = rec;
-          }
-        } else if (normType === "خروج") {
-          attendanceByDate[dateKey].checkOutCount++;
-          if (!attendanceByDate[dateKey].checkOut) {
-            attendanceByDate[dateKey].checkOut = rec;
-          } else {
-            const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkOut.time) || 0;
-            const newSec = parseTimeToSeconds(rec.time) || 0;
-            if (newSec > currentSec) attendanceByDate[dateKey].checkOut = rec;
-          }
-        }
-      });
-
-      const isDateInLeave = (date: Date): { inLeave: boolean; type: string } => {
-        const dTime = date.getTime();
-        for (const lv of leavesList) {
-          const startD = parseDate(lv.start_date);
-          const endD = parseDate(lv.end_date);
-          if (startD && endD) {
-            const sTime = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime();
-            const eTime = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime();
-            const curTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-            if (curTime >= sTime && curTime <= eTime) {
-              return { inLeave: true, type: lv.leave_type };
-            }
-          }
-        }
-        return { inLeave: false, type: "" };
-      };
-
-      let startDate = new Date();
-      let endDate = new Date();
-      let hasRecords = false;
-      const validParsedDates = attendanceList
-        .map((rec: any) => parseDate(rec.date))
-        .filter((d: Date | null) => d !== null) as Date[];
-
-      if (validParsedDates.length > 0) {
-        hasRecords = true;
-        let minTime = validParsedDates[0].getTime();
-        let maxTime = validParsedDates[0].getTime();
-        validParsedDates.forEach(d => {
-          const t = d.getTime();
-          if (t < minTime) minTime = t;
-          if (t > maxTime) maxTime = t;
-        });
-        startDate = new Date(minTime);
-        endDate = new Date(maxTime);
-      } else {
-        startDate = new Date();
-        startDate.setDate(1);
-      }
-
-      const maxDays = 31;
-      const daysCount = Math.min(maxDays, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1);
-
-      const dailyReports: any[] = [];
-      let totalDelayMinutes = 0;
-      let totalEarlyOutMinutes = 0;
-      let totalAbsences = 0;
-      let totalLeavesUsed = 0;
-      let totalWorkingDays = 0;
-      let perfectComplianceDays = 0;
-      let totalWorkHours = 0;
-      const lateDaysSummary: any[] = [];
-      const duplicateFingerprintsSummary: any[] = [];
-      let totalDuplicateFingerprintDays = 0;
-
-      for (let i = 0; i < daysCount; i++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + i);
-        const dateKey = formatDateKey(currentDate);
-        const dayOfWeek = currentDate.getDay();
-        const dayArabic = getArabicDayName(currentDate);
-        const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
-        if (!isWeekend) totalWorkingDays++;
-
-        const attendance = attendanceByDate[dateKey];
-        const { inLeave, type: leaveType } = isDateInLeave(currentDate);
-        let hasPermission = false;
-        let permissionDetails = "";
-        for (const perm of permissionsList) {
-          const pDate = parseDate(perm.date);
-          if (pDate && formatDateKey(pDate) === dateKey) {
-            hasPermission = true;
-            permissionDetails = `مغادرة من ${perm.start_time} إلى ${perm.end_time}`;
-            break;
-          }
-        }
-
-        let statusText = "منتظم";
-        let statusStyle = "success";
-        let delayMinutes = 0;
-        let earlyOutMinutes = 0;
-        let note = "";
-        const checkInTime = attendance?.checkIn?.time || null;
-        const checkOutTime = attendance?.checkOut?.time || null;
-
-        if (attendance) {
-          let hasViolation = false;
-          if (attendance.checkInCount > 1) note += `تنبيه: تم رصد حركتي دخول (${attendance.checkInCount} مرات). `;
-          if (attendance.checkOutCount > 1) note += `تنبيه: تم رصد حركتي خروج (${attendance.checkOutCount} مرات). `;
-
-          if (checkInTime) {
-            const checkInSec = parseTimeToSeconds(checkInTime);
-            if (checkInSec !== null && checkInSec > officialStartSec) {
-              let excusedByPermission = false;
-              let coveringPermission: any = null;
-              for (const perm of permissionsList) {
-                const pDate = parseDate(perm.date);
-                if (pDate && formatDateKey(pDate) === dateKey) {
-                  const pStartSec = parseTimeToSeconds(perm.start_time);
-                  const pEndSec = parseTimeToSeconds(perm.end_time);
-                  if (pStartSec !== null && pEndSec !== null && pStartSec <= officialStartSec && pEndSec >= checkInSec) {
-                    excusedByPermission = true;
-                    coveringPermission = perm;
-                    break;
-                  }
-                }
-              }
-              if (excusedByPermission) {
-                note += `مغادرة رسمية من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
-              } else {
-                delayMinutes = Math.ceil((checkInSec - officialStartSec) / 60);
-                totalDelayMinutes += delayMinutes;
-                hasViolation = true;
-                note += "تأخير غير معذور. ";
-                lateDaysSummary.push({ date: formatDateDisplay(currentDate), dayName: dayArabic, delayMinutes, time: checkInTime });
-              }
-            }
-          } else {
-            hasViolation = true;
-            note += "لم يتم رصد حركة دخول. ";
-          }
-
-          if (checkOutTime) {
-            const checkOutSec = parseTimeToSeconds(checkOutTime);
-            if (checkOutSec !== null && checkOutSec < officialEndSec) {
-              let excusedByPermission = false;
-              for (const perm of permissionsList) {
-                const pDate = parseDate(perm.date);
-                if (pDate && formatDateKey(pDate) === dateKey) {
-                  const pStartSec = parseTimeToSeconds(perm.start_time);
-                  const pEndSec = parseTimeToSeconds(perm.end_time);
-                  if (pStartSec !== null && pEndSec !== null && pStartSec <= checkOutSec && pEndSec >= officialEndSec) {
-                    excusedByPermission = true;
-                    break;
-                  }
-                }
-              }
-              if (!excusedByPermission) {
-                earlyOutMinutes = Math.ceil((officialEndSec - checkOutSec) / 60);
-                totalEarlyOutMinutes += earlyOutMinutes;
-                hasViolation = true;
-                note += `خرج مبكراً بـ ${earlyOutMinutes} دقيقة. `;
-              }
-            }
-          } else {
-            note += "لم يتم رصد حركة خروج. ";
-          }
-
-          if (hasViolation) {
-            statusStyle = "danger";
-            const parts = [];
-            if (delayMinutes > 0) parts.push(`تأخير ${delayMinutes} د`);
-            if (earlyOutMinutes > 0) parts.push(`خروج مبكر ${earlyOutMinutes} د`);
-            if (parts.length === 0) parts.push("غير ملتزم");
-            statusText = parts.join(" و ");
-          } else {
-            statusStyle = "success";
-            statusText = "حضور منتظم";
-            if (!isWeekend) perfectComplianceDays++;
-          }
-        } else {
-          if (isWeekend) {
-            statusText = "عطلة نهاية الأسبوع";
-            statusStyle = "secondary";
-          } else if (inLeave) {
-            statusText = `إجازة رسمية (${leaveType})`;
-            statusStyle = "warning";
-            totalLeavesUsed++;
-            perfectComplianceDays++;
-            note = `مغطى بإجازة: ${leaveType}`;
-          } else {
-            statusText = "غياب بدون عذر";
-            statusStyle = "danger";
-            totalAbsences++;
-            note = "لم يتم رصد أي حركات حضور أو خروج";
-          }
-        }
-
-        let dailyWorkHours = 0;
-        if (checkInTime && checkOutTime) {
-          const inSec = parseTimeToSeconds(checkInTime);
-          const outSec = parseTimeToSeconds(checkOutTime);
-          if (inSec !== null && outSec !== null && outSec > inSec) {
-            dailyWorkHours = Number(((outSec - inSec) / 3600).toFixed(2));
-            totalWorkHours += dailyWorkHours;
-          }
-        }
-
-        dailyReports.push({
-          date: formatDateDisplay(currentDate),
-          dayName: dayArabic,
-          checkIn: checkInTime,
-          checkOut: checkOutTime,
-          checkInCount: attendance?.checkInCount || 0,
-          checkOutCount: attendance?.checkOutCount || 0,
-          hasLeave: inLeave,
-          leaveType: inLeave ? leaveType : null,
-          hasPermission,
-          permissionDetails,
-          workHours: dailyWorkHours,
-          status: statusText,
-          statusStyle,
-          delayMinutes,
-          earlyOutMinutes,
-          note: note.trim(),
-          isWeekend
-        });
-      }
-
-      for (const report of dailyReports) {
-        if (report.checkInCount > 1 || report.checkOutCount > 1) {
-          totalDuplicateFingerprintDays++;
-          const details: string[] = [];
-          if (report.checkInCount > 1) details.push(`دخول ${report.checkInCount} مرات`);
-          if (report.checkOutCount > 1) details.push(`خروج ${report.checkOutCount} مرات`);
-          duplicateFingerprintsSummary.push({ date: report.date, dayName: report.dayName, checkInCount: report.checkInCount, checkOutCount: report.checkOutCount, details: details.join(" و ") });
-        }
-      }
-
-      let correctAttendancePercentage = 100;
-      if (totalWorkingDays > 0) {
-        correctAttendancePercentage = Math.round((perfectComplianceDays / totalWorkingDays) * 100);
-      }
-
-      const results = {
-        employee_info,
-        kpis: { totalDelayMinutes, totalEarlyOutMinutes, totalAbsences, totalLeavesUsed, totalWorkingDays, perfectComplianceDays, correctAttendancePercentage, totalWorkHours: Number(totalWorkHours.toFixed(1)), totalDuplicateFingerprintDays },
-        lateDaysSummary,
-        duplicateFingerprintsSummary,
-        daily_report: dailyReports,
-        extracted_data: rawExtracted
-      };
+      const results = processAttendanceData(rawExtracted, officialStartTime, officialEndTime);
 
       sendEvent("complete", results);
       res.end();
@@ -1314,6 +529,22 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
+
+  // Graceful shutdown
+  process.on("SIGTERM", async () => {
+    console.log("[Server] SIGTERM received, shutting down...");
+    clearInterval(rateLimitCleanupInterval);
+    const { closeDB } = await import("./src/db");
+    await closeDB();
+    process.exit(0);
+  });
+  process.on("SIGINT", async () => {
+    console.log("[Server] SIGINT received, shutting down...");
+    clearInterval(rateLimitCleanupInterval);
+    const { closeDB } = await import("./src/db");
+    await closeDB();
+    process.exit(0);
   });
 }
 

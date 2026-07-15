@@ -271,7 +271,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         cellPadding: 3,
       },
       headStyles: {
-        fillColor: [99, 102, 241],
+        fillColor: [75, 101, 132],
         textColor: 255,
         fontStyle: "bold",
       },
@@ -305,19 +305,18 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-        <div className="h-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500" />
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
         <div className="p-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl">
-              <Clock className="h-6 w-6" />
+            <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
+              <Clock className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">
+              <h2 className="text-lg font-black text-slate-800 dark:text-white">
                 سجل العمل الإضافي
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                تسجيل ساعات العمل الإضافي لكل موظف — كل 8 ساعات = يوم إضافي
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                تسجيل ساعات العمل الإضافي — كل 8 ساعات = يوم
               </p>
             </div>
           </div>
@@ -330,7 +329,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 setChangePasswordError(null);
                 setChangePasswordSuccess(false);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
             >
               <Key className="h-3.5 w-3.5" />
               <span>تغيير الباسورد</span>
@@ -341,78 +340,78 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">الموظفين</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الموظفين</span>
               <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{perEmployeeSummary.length}</span>
+                <span className="text-3xl font-black text-slate-700 dark:text-white">{perEmployeeSummary.length}</span>
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">شخص</span>
               </div>
             </div>
-            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
-              <Users className="h-5 w-5" />
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
+              <Users className="h-4 w-4" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">إجمالي الساعات</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">إجمالي الساعات</span>
               <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-amber-600 dark:text-amber-400">{totalHours}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">ساعة</span>
+                <span className="text-3xl font-black text-slate-700 dark:text-white">{totalHours}</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
               </div>
             </div>
-            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
-              <Clock className="h-5 w-5" />
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
+              <Clock className="h-4 w-4" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">أيام العمل الإضافي</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">أيام العمل</span>
               <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{totalDays}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">يوم</span>
+                <span className="text-3xl font-black text-slate-700 dark:text-white">{totalDays}</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">يوم</span>
               </div>
             </div>
-            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
-              <Calendar className="h-5 w-5" />
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
+              <Calendar className="h-4 w-4" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">الساعات المتبقية</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">المتبقي</span>
               <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-violet-600 dark:text-violet-400">{remainingHours}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">ساعة</span>
+                <span className="text-3xl font-black text-slate-700 dark:text-white">{remainingHours}</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
               </div>
             </div>
-            <div className="p-2.5 bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 rounded-xl">
-              <TrendingUp className="h-5 w-5" />
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
+              <TrendingUp className="h-4 w-4" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">تقدم تحويل الساعات لأيام (لجميع الموظفين)</span>
-          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-lg">
-            {remainingHours}/8 ساعات للتالي
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">تقدم تحويل الساعات لأيام</span>
+          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+            {remainingHours}/8 ساعات
           </span>
         </div>
-        <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+        <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+            className="h-full bg-slate-600 dark:bg-slate-400 rounded-full transition-all duration-500"
             style={{ width: `${(remainingHours / 8) * 100}%` }}
           />
         </div>
@@ -420,28 +419,28 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
       {/* Per-Employee Summary */}
       {perEmployeeSummary.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
-          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
-            <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
+          <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-4">
+            <Users className="h-4 w-4 text-slate-400" />
             <span>ملخص كل موظف</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {perEmployeeSummary.map(([name, data]) => (
               <div
                 key={name}
-                className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition-all cursor-pointer"
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-all cursor-pointer"
                 onClick={() => setSearchQuery(name === searchQuery ? "" : name)}
               >
-                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
                   <User className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{name}</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-900/40">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                       {data.hours} ساعة
                     </span>
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/40">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded">
                       {data.days} يوم
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
