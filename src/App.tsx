@@ -26,14 +26,9 @@ import {
   Moon,
   Sun,
   Globe,
-  GitCompareArrows,
-  BarChart3,
-  Settings,
   FileDown,
-  Layers,
-  CalendarDays,
 } from "lucide-react";
-import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, EmployeeLeaveBalance } from "./types";
+import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
@@ -43,16 +38,8 @@ import {
   saveReportToDB,
   deleteReportFromDB,
   clearAllReportsFromDB,
-  fetchLeaveBalances,
-  saveLeaveBalancesToDB,
-  fetchPoliciesFromDB,
-  savePoliciesToDB,
 } from "./apiClient";
-import AdminPanel from "./components/AdminPanel";
-import EmployeeComparison from "./components/EmployeeComparison";
-import MonthlyTrends from "./components/MonthlyTrends";
-import LeaveBalance from "./components/LeaveBalance";
-import CustomPolicies from "./components/CustomPolicies";
+
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -171,34 +158,8 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  type ViewMode = "main" | "admin" | "compare" | "trends" | "policies" | "leaves";
+  type ViewMode = "main";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
-
-  // Leave balance state
-  const [leaveBalances, setLeaveBalances] = useState<EmployeeLeaveBalance[]>(() => {
-    try {
-      const stored = localStorage.getItem("leave_balances");
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const handleUpdateLeaveBalances = (newBalances: EmployeeLeaveBalance[]) => {
-    setLeaveBalances(newBalances);
-    try { localStorage.setItem("leave_balances", JSON.stringify(newBalances)); } catch {}
-    if (dbAvailable) saveLeaveBalancesToDB(newBalances).catch(() => {});
-  };
-
-  // Custom policies
-  const [policies, setPolicies] = useState(() => {
-    try {
-      const stored = localStorage.getItem("work_policies");
-      return stored ? JSON.parse(stored) : { gracePeriod: 0, overtimeThreshold: 0, maxDelaysAllowed: 10 };
-    } catch {
-      return { gracePeriod: 0, overtimeThreshold: 0, maxDelaysAllowed: 10 };
-    }
-  });
 
   // Multiple images state
   const [multiImages, setMultiImages] = useState<string[]>([]);
@@ -229,22 +190,10 @@ export default function App() {
       setDbAvailable(dbOk);
       if (dbOk) {
         try {
-          const [dbReports, dbBalances, dbPolicies] = await Promise.all([
-            fetchReports(),
-            fetchLeaveBalances(),
-            fetchPoliciesFromDB(),
-          ]);
+          const dbReports = await fetchReports();
           if (dbReports.length > 0) {
             setHistory(dbReports);
             localStorage.setItem("timesheet_reports_history", JSON.stringify(dbReports));
-          }
-          if (dbBalances.length > 0) {
-            setLeaveBalances(dbBalances);
-            localStorage.setItem("leave_balances", JSON.stringify(dbBalances));
-          }
-          if (dbPolicies) {
-            setPolicies(dbPolicies);
-            localStorage.setItem("work_policies", JSON.stringify(dbPolicies));
           }
         } catch (e) {
           console.error("[DB] Failed to load data:", e);
@@ -301,23 +250,10 @@ export default function App() {
     }
   };
 
-  // Save custom policies
-  const savePolicies = (newPolicies: any) => {
-    setPolicies(newPolicies);
-    try { localStorage.setItem("work_policies", JSON.stringify(newPolicies)); } catch {}
-    if (dbAvailable) savePoliciesToDB(newPolicies).catch(() => {});
-  };
-
   // Export to PDF
   const handleExportPDF = async () => {
     if (!result) return;
     await exportToPDF(result, officialStartTime, officialEndTime, lang);
-  };
-
-  // Handle selecting a report from admin/comparison view
-  const handleSelectReport = (r: TimesheetAnalysisResult) => {
-    setResult(r);
-    setViewMode("main");
   };
 
   // Drag and Drop handlers
@@ -802,21 +738,6 @@ export default function App() {
               <button onClick={() => setViewMode("main")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
                 <FileText className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => setViewMode("compare")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "compare" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("compareTitle")}>
-                <GitCompareArrows className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={() => setViewMode("trends")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "trends" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("trendsTitle")}>
-                <BarChart3 className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={() => setViewMode("policies")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "policies" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("policiesTitle")}>
-                <Settings className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={() => setViewMode("leaves")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "leaves" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="رصيد الإجازات">
-                <CalendarDays className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={() => setViewMode("admin")} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${viewMode === "admin" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("adminTitle")}>
-                <BarChart3 className="h-3.5 w-3.5" />
-              </button>
             </div>
 
             {/* Language Toggle */}
@@ -867,41 +788,6 @@ export default function App() {
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Admin Panel View */}
-          {viewMode === "admin" && (
-            <div className="lg:col-span-12">
-              <AdminPanel reports={history} onSelect={handleSelectReport} onBack={() => setViewMode("main")} />
-            </div>
-          )}
-
-          {/* Comparison View */}
-          {viewMode === "compare" && (
-            <div className="lg:col-span-12">
-              <EmployeeComparison reports={history} onSelect={handleSelectReport} />
-            </div>
-          )}
-
-          {/* Trends View */}
-          {viewMode === "trends" && (
-            <div className="lg:col-span-12">
-              <MonthlyTrends reports={history} />
-            </div>
-          )}
-
-          {/* Policies View */}
-          {viewMode === "policies" && (
-            <div className="lg:col-span-12">
-              <CustomPolicies policies={policies} onSave={savePolicies} />
-            </div>
-          )}
-
-          {/* Leave Balance View */}
-          {viewMode === "leaves" && (
-            <div className="lg:col-span-12">
-              <LeaveBalance balances={leaveBalances} onUpdate={handleUpdateLeaveBalances} />
-            </div>
-          )}
-
           {/* Main View */}
           {viewMode === "main" && (
           <>
