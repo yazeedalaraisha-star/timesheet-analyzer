@@ -1,4 +1,4 @@
-import { SavedReport, EmployeeLeaveBalance, OvertimeEntry } from "./types";
+import { SavedReport, EmployeeLeaveBalance, OvertimeEntry, EmployeeSchedule } from "./types";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T | null> {
   try {
@@ -98,4 +98,17 @@ export async function changePassword(oldPassword: string, newPassword: string): 
     body: JSON.stringify({ oldPassword, newPassword }),
   });
   return data ?? { ok: false, error: "فشل الاتصال" };
+}
+
+export async function fetchSchedulesFromDB(): Promise<EmployeeSchedule[]> {
+  const data = await apiFetch<EmployeeSchedule[]>("/api/schedules");
+  return data ?? [];
+}
+
+export async function saveSchedulesToDB(schedules: EmployeeSchedule[]): Promise<boolean> {
+  const data = await apiFetch<{ ok: boolean }>("/api/schedules", {
+    method: "POST",
+    body: JSON.stringify(schedules),
+  });
+  return data?.ok ?? false;
 }

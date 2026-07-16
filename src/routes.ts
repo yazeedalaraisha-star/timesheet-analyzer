@@ -216,6 +216,35 @@ router.post("/overtime", async (req, res) => {
   }
 });
 
+// ========== SCHEDULES ==========
+
+router.get("/schedules", async (_req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.json([]);
+    const schedules = await db.collection("schedules").find().sort({ department: 1, employeeName: 1 }).toArray();
+    res.json(schedules);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/schedules", async (req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.status(503).json({ error: "قاعدة البيانات غير متصلة" });
+    const schedules = req.body;
+    if (!Array.isArray(schedules)) return res.status(400).json({ error: "Expected array" });
+    await db.collection("schedules").deleteMany({});
+    if (schedules.length > 0) {
+      await db.collection("schedules").insertMany(schedules);
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ========== POLICIES ==========
 
 router.get("/policies", async (_req, res) => {

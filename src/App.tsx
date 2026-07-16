@@ -32,7 +32,7 @@ import {
   X,
   Shield,
 } from "lucide-react";
-import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry } from "./types";
+import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
@@ -44,9 +44,12 @@ import {
   clearAllReportsFromDB,
   fetchOvertimeFromDB,
   saveOvertimeToDB,
+  fetchSchedulesFromDB,
+  saveSchedulesToDB,
 } from "./apiClient";
 import { parseTimeToSeconds } from "./utils/timeUtils";
 const OvertimeTracker = React.lazy(() => import("./components/OvertimeTracker"));
+const ScheduleManager = React.lazy(() => import("./components/ScheduleManager"));
 
 type UserRole = "admin" | "viewer";
 
@@ -168,7 +171,7 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  type ViewMode = "main" | "overtime";
+  type ViewMode = "main" | "overtime" | "schedule";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
 
   // Auth state — default is viewer (no login needed)
@@ -244,6 +247,20 @@ export default function App() {
     if (dbAvailable) saveOvertimeToDB(newEntries).catch(() => {});
   };
 
+  // Schedule state
+  const [schedules, setSchedules] = useState<EmployeeSchedule[]>(() => {
+    try {
+      const stored = localStorage.getItem("employee_schedules");
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
+  const handleUpdateSchedules = (newSchedules: EmployeeSchedule[]) => {
+    setSchedules(newSchedules);
+    try { localStorage.setItem("employee_schedules", JSON.stringify(newSchedules)); } catch {}
+    if (dbAvailable) saveSchedulesToDB(newSchedules).catch(() => {});
+  };
+
   // Load history on mount + check DB status
   useEffect(() => {
     // Load from localStorage first (fast)
@@ -267,6 +284,11 @@ export default function App() {
           if (dbOvertime.length > 0) {
             setOvertimeEntries(dbOvertime);
             localStorage.setItem("overtime_entries", JSON.stringify(dbOvertime));
+          }
+          const dbSchedules = await fetchSchedulesFromDB();
+          if (dbSchedules.length > 0) {
+            setSchedules(dbSchedules);
+            localStorage.setItem("employee_schedules", JSON.stringify(dbSchedules));
           }
         } catch (e) {
           console.error("[DB] Failed to load data:", e);
@@ -930,6 +952,10 @@ export default function App() {
                 <FileText className="h-3.5 w-3.5 inline ml-1" />
                 التقرير
               </button>
+              <button onClick={() => setViewMode("schedule")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "schedule" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="جدول الدوام">
+                <Calendar className="h-3.5 w-3.5 inline ml-1" />
+                الجدول
+              </button>
               <button onClick={() => setViewMode("overtime")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="العمل الإضافي">
                 <Clock className="h-3.5 w-3.5 inline ml-1" />
                 الإضافي
@@ -989,6 +1015,15 @@ export default function App() {
             <div className="lg:col-span-12">
               <Suspense fallback={<div className="flex items-center justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
                 <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} isAdmin={isAdmin} />
+              </Suspense>
+            </div>
+          )}
+
+          {/* Schedule View */}
+          {viewMode === "schedule" && (
+            <div className="lg:col-span-12">
+              <Suspense fallback={<div className="flex items-center justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+                <ScheduleManager schedules={schedules} onUpdate={handleUpdateSchedules} />
               </Suspense>
             </div>
           )}

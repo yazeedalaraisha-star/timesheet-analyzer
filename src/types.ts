@@ -116,3 +116,28 @@ export interface OvertimeEntry {
   type?: "overtime" | "deduction";
   reason?: string;
 }
+
+export interface DaySchedule {
+  day: string;
+  startTime: string;
+  endTime: string;
+  isOff: boolean;
+}
+
+export interface EmployeeSchedule {
+  id: string;
+  employeeName: string;
+  department: string;
+  schedule: DaySchedule[];
+}
+
+export interface ScheduleViolation {
+  employeeName: string;
+  date: string;
+  dayName: string;
+  type: "late_arrival" | "early_departure" | "absence" | "unscheduled" | "no_checkout";
+  expectedTime?: string;
+  actualTime?: string;
+  delayMinutes?: number;
+  details: string;
+}
