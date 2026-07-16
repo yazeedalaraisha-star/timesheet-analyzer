@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Lock, User, Eye, EyeOff, LogIn } from "lucide-react";
-import { verifyPassword } from "../apiClient";
 
 export type UserRole = "admin" | "viewer";
 
@@ -20,7 +19,7 @@ export default function LoginScreen({ onLogin }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !password.trim()) {
       setError("يرجى إدخال اسم المستخدم وكلمة المرور");
@@ -30,27 +29,21 @@ export default function LoginScreen({ onLogin }: Props) {
     setLoading(true);
     setError(null);
 
-    try {
-      const user = USERS.find((u) => u.name === name.trim());
-      if (!user) {
-        setError("اسم المستخدم غير صحيح");
-        setLoading(false);
-        return;
-      }
-
-      const valid = await verifyPassword(password.trim());
-      if (!valid) {
-        setError("كلمة المرور غير صحيحة");
-        setLoading(false);
-        return;
-      }
-
-      onLogin(user.role, user.name);
-    } catch {
-      setError("خطأ في الاتصال");
-    } finally {
+    const user = USERS.find((u) => u.name === name.trim());
+    if (!user) {
+      setError("اسم المستخدم غير صحيح");
       setLoading(false);
+      return;
     }
+
+    if (password.trim() !== user.password) {
+      setError("كلمة المرور غير صحيحة");
+      setLoading(false);
+      return;
+    }
+
+    onLogin(user.role, user.name);
+    setLoading(false);
   };
 
   const nameSuggestions = USERS.filter((u) =>
