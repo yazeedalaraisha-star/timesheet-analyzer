@@ -19,6 +19,7 @@ import {
   Upload,
   Eye,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { OvertimeEntry } from "../types";
 import { verifyPassword, changePassword } from "../apiClient";
 
@@ -61,21 +62,43 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      if (!text) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+        parseImportCSV(csv);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        let text = ev.target?.result as string;
+        if (!text) return;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        parseImportCSV(text);
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+    e.target.value = "";
+  };
+
+  const parseImportCSV = (text: string) => {
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) {
         alert("الملف فارغ أو لا يحتوي على بيانات");
         return;
       }
+      const delimiter = lines[0].includes(";") ? ";" : ",";
       const header = lines[0].toLowerCase().replace(/["\s]/g, "");
       const isArabic = header.includes("الموظف") || header.includes("التاريخ");
       const newEntries: OvertimeEntry[] = [];
       const errors: string[] = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+        const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
         if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية`); continue; }
         const [empName, dateVal, hoursVal, notesVal, typeVal, reasonVal] = cols;
         if (!empName || !dateVal || !hoursVal) { errors.push(`سطر ${i + 1}: بيانات ناقصة`); continue; }
@@ -100,9 +123,6 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
       if (errors.length > 0) {
         alert("أخطاء في الاستيراد:\n" + errors.slice(0, 10).join("\n"));
       }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
   };
 
   const handleVerifyAndImport = async (entries: OvertimeEntry[]) => {
@@ -447,7 +467,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 <input
                   ref={csvInputRef}
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".csv,.txt,.xlsx,.xls"
                   className="hidden"
                   onChange={handleCSVImport}
                 />
@@ -455,8 +475,8 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   onClick={() => csvInputRef.current?.click()}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
                 >
-                  <Upload className="h-3.5 w-3.5" />
-                  <span>استيراد CSV</span>
+              <Upload className="h-3.5 w-3.5" />
+              <span>استيراد CSV / Excel</span>
                 </button>
               </>
             )}

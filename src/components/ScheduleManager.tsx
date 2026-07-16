@@ -15,6 +15,7 @@ import {
   Download,
   FileDown,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { EmployeeSchedule, DaySchedule } from "../types";
 
 interface Props {
@@ -73,17 +74,45 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     return Array.from(map.entries()).sort((a, b) => b[1].employees - a[1].employees);
   }, [schedules]);
 
-  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      if (!text) return;
-      parseCSVAndImport(text);
-    };
-    reader.readAsText(file);
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        parseCSVAndImport(csv);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        let text = ev.target?.result as string;
+        if (!text) return;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const decoded = decodeArabicText(text);
+        parseCSVAndImport(decoded);
+      };
+      reader.readAsText(file, "UTF-8");
+    }
     e.target.value = "";
+  };
+
+  const decodeArabicText = (text: string): string => {
+    if (/[أ-ي٠-٩]/.test(text)) return text;
+    try {
+      const bytes = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xFF;
+      const decoded = new TextDecoder("windows-1256").decode(bytes);
+      if (/[أ-ي]/.test(decoded)) return decoded;
+    } catch {}
+    return text;
   };
 
   const parseCSVAndImport = (text: string) => {
@@ -93,15 +122,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       return;
     }
 
+    const delimiter = lines[0].includes(";") ? ";" : ",";
     const header = lines[0].toLowerCase().replace(/["\s]/g, "");
-    const hasArabic = header.includes("الموظف") || header.includes("اليوم");
 
     const map = new Map<string, { dept: string; schedule: DaySchedule[] }>();
     const errors: string[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-      if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية`); continue; }
+      const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
+      if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية (وجد ${cols.length})`); continue; }
       const [empName, dept, day, start, end, off] = cols;
       if (!empName || !day) { errors.push(`سطر ${i + 1}: بيانات ناقصة`); continue; }
 
@@ -288,13 +317,13 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <input ref={csvInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport} />
+        <input ref={csvInputRef} type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden" onChange={handleFileImport} />
         <button
           onClick={() => csvInputRef.current?.click()}
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-xs font-bold rounded-xl transition-all"
         >
           <Upload className="h-3.5 w-3.5" />
-          استيراد CSV
+          استيراد CSV / Excel
         </button>
         <button
           onClick={() => { setShowAddForm(!showAddForm); setEditingId(null); }}
