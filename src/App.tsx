@@ -27,6 +27,7 @@ import {
   Sun,
   Globe,
   FileDown,
+  LogOut,
 } from "lucide-react";
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
@@ -43,6 +44,8 @@ import {
 } from "./apiClient";
 import { parseTimeToSeconds } from "./utils/timeUtils";
 const OvertimeTracker = React.lazy(() => import("./components/OvertimeTracker"));
+const LoginScreen = React.lazy(() => import("./components/LoginScreen"));
+import type { UserRole } from "./components/LoginScreen";
 
 import { 
   ResponsiveContainer, 
@@ -164,6 +167,33 @@ export default function App() {
   // View modes
   type ViewMode = "main" | "overtime";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
+
+  // Auth state
+  const [authRole, setAuthRole] = useState<UserRole | null>(() => {
+    try { return (localStorage.getItem("auth_role") as UserRole) || null; } catch { return null; }
+  });
+  const [authName, setAuthName] = useState<string>(() => {
+    try { return localStorage.getItem("auth_name") || ""; } catch { return ""; }
+  });
+  const isAdmin = authRole === "admin";
+
+  const handleLogin = (role: UserRole, name: string) => {
+    setAuthRole(role);
+    setAuthName(name);
+    try {
+      localStorage.setItem("auth_role", role);
+      localStorage.setItem("auth_name", name);
+    } catch {}
+  };
+
+  const handleLogout = () => {
+    setAuthRole(null);
+    setAuthName("");
+    try {
+      localStorage.removeItem("auth_role");
+      localStorage.removeItem("auth_name");
+    } catch {}
+  };
 
   // Multiple images state
   const [multiImages, setMultiImages] = useState<string[]>([]);
@@ -295,13 +325,10 @@ export default function App() {
     try {
       setError(null);
       setResult(null);
-
-      // Compress image on client side to reduce API latency
       const compressedDataUrl = await compressImage(file);
       setImage(compressedDataUrl);
       setImagePreview(compressedDataUrl);
 
-      // Show compression info
       const originalKB = Math.round(file.size / 1024);
       const compressedBytes = Math.round((compressedDataUrl.length * 3) / 4);
       const compressedKB = Math.round(compressedBytes / 1024);
@@ -313,16 +340,48 @@ export default function App() {
     }
   };
 
+  const processMultipleFiles = async (files: FileList | File[]) => {
+    const validFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (validFiles.length === 0) {
+      setError("الرجاء اختيار ملفات صور صالحة (PNG, JPEG, JPG).");
+      return;
+    }
+    setError(null);
+    setResult(null);
+    setMultiResults([]);
+
+    const compressed: string[] = [];
+    for (const file of validFiles) {
+      try {
+        const dataUrl = await compressImage(file);
+        compressed.push(dataUrl);
+      } catch {}
+    }
+    if (compressed.length > 0) {
+      setMultiImages(compressed);
+      setImage(compressed[0]);
+      setImagePreview(compressed[0]);
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length > 1) {
+        processMultipleFiles(e.dataTransfer.files);
+      } else {
+        processFile(e.dataTransfer.files[0]);
+      }
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
+      if (e.target.files.length > 1) {
+        processMultipleFiles(e.target.files);
+      } else {
+        processFile(e.target.files[0]);
+      }
     }
   };
 
@@ -330,13 +389,16 @@ export default function App() {
   const handleReset = () => {
     setImage(null);
     setImagePreview(null);
+    setMultiImages([]);
+    setMultiResults([]);
     setResult(null);
     setError(null);
   };
 
   // Analyze request handler with streaming progress
   const handleAnalyze = async () => {
-    if (!image) {
+    const imagesToAnalyze = multiImages.length > 0 ? multiImages : (image ? [image] : []);
+    if (imagesToAnalyze.length === 0) {
       setError("يرجى رفع لقطة شاشة لكشف الدوام أولاً.");
       return;
     }
@@ -344,59 +406,78 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setMultiResults([]);
     setProgressMessage("جاري الاتصال بالخادم...");
 
     try {
-      const response = await fetch("/api/analyze/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, officialStartTime, officialEndTime })
-      });
+      const allResults: TimesheetAnalysisResult[] = [];
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => null);
-        throw new Error(errData?.error || `خطأ في الخادم (${response.status})`);
-      }
+      for (let i = 0; i < imagesToAnalyze.length; i++) {
+        if (imagesToAnalyze.length > 1) {
+          setProgressMessage(`جاري تحليل الصورة ${i + 1} من ${imagesToAnalyze.length}...`);
+        }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("فشل في الاتصال بالخادم للتدفق المباشر.");
+        const response = await fetch("/api/analyze/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imagesToAnalyze[i], officialStartTime, officialEndTime })
+        });
 
-      const decoder = new TextDecoder();
-      let buffer = "";
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          throw new Error(errData?.error || `خطأ في الخادم (${response.status}) للصورة ${i + 1}`);
+        }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("فشل في الاتصال بالخادم للتدفق المباشر.");
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let imageResult: TimesheetAnalysisResult | null = null;
 
-        let eventType = "";
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const jsonStr = line.slice(6);
-            try {
-              const data = JSON.parse(jsonStr);
-              if (eventType === "progress") {
-                setProgressMessage(data.message || "جاري المعالجة...");
-              } else if (eventType === "complete") {
-                setResult(data);
-                saveToHistory(data);
-                setProgressMessage(null);
-              } else if (eventType === "error") {
-                throw new Error(data.message || "خطأ غير معروف من الخادم.");
-              }
-            } catch (parseErr: any) {
-              if (parseErr.message.includes("خطأ") || parseErr.message.includes("حدث خطأ")) {
-                throw parseErr;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          let eventType = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6);
+              try {
+                const data = JSON.parse(jsonStr);
+                if (eventType === "progress") {
+                  setProgressMessage(data.message || "جاري المعالجة...");
+                } else if (eventType === "complete") {
+                  imageResult = data;
+                  allResults.push(data);
+                  saveToHistory(data);
+                } else if (eventType === "error") {
+                  throw new Error(data.message || "خطأ غير معروف من الخادم.");
+                }
+              } catch (parseErr: any) {
+                if (parseErr.message.includes("خطأ") || parseErr.message.includes("حدث خطأ")) {
+                  throw parseErr;
+                }
               }
             }
           }
         }
       }
+
+      if (allResults.length === 1) {
+        setResult(allResults[0]);
+      } else if (allResults.length > 1) {
+        setMultiResults(allResults);
+        const merged = mergeResults(allResults);
+        setResult(merged);
+      }
+      setProgressMessage(null);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "حدث خطأ غير متوقع أثناء الاتصال بالخادم.");
@@ -404,6 +485,60 @@ export default function App() {
       setLoading(false);
       setProgressMessage(null);
     }
+  };
+
+  // Merge multiple analysis results into one combined result
+  const mergeResults = (results: TimesheetAnalysisResult[]): TimesheetAnalysisResult => {
+    const first = results[0];
+    const allAttendance: any[] = [];
+    const allPermissions: any[] = [];
+    const allLeaves: any[] = [];
+    const names = new Set<string>();
+    let totalDelay = 0;
+    let totalEarlyOut = 0;
+    let totalAbsences = 0;
+    let totalLeavesUsed = 0;
+    let totalWorkingDays = 0;
+
+    for (const r of results) {
+      if (r.extracted_data?.attendance_records) {
+        allAttendance.push(...r.extracted_data.attendance_records);
+      }
+      if (r.extracted_data?.permissions) {
+        allPermissions.push(...r.extracted_data.permissions);
+      }
+      if (r.extracted_data?.leaves) {
+        allLeaves.push(...r.extracted_data.leaves);
+      }
+      names.add(r.employee_info?.name || "غير معروف");
+      totalDelay += r.kpis?.totalDelayMinutes || 0;
+      totalEarlyOut += r.kpis?.totalEarlyOutMinutes || 0;
+      totalAbsences += r.kpis?.totalAbsences || 0;
+      totalLeavesUsed += r.kpis?.totalLeavesUsed || 0;
+      totalWorkingDays += r.kpis?.totalWorkingDays || 0;
+    }
+
+    return {
+      employee_info: {
+        id: first.employee_info?.id || "MULTI",
+        name: Array.from(names).join(" + "),
+        role: first.employee_info?.role || "员工",
+      },
+      kpis: {
+        totalDelayMinutes: totalDelay,
+        totalEarlyOutMinutes: totalEarlyOut,
+        totalAbsences,
+        totalLeavesUsed,
+        totalWorkingDays,
+      },
+      daily_report: results.flatMap((r) => r.daily_report || []),
+      extracted_data: {
+        employee_info: first.extracted_data?.employee_info || first.employee_info,
+        attendance_records: allAttendance,
+        permissions: allPermissions,
+        leaves: allLeaves,
+      },
+    };
   };
 
   // Helper to get status item styling classes in Tailwind
@@ -711,6 +846,13 @@ export default function App() {
   return (
     <div id="app-root" className="min-h-screen bg-[#f5f6f8] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-slate-200 selection:text-slate-900 transition-colors duration-200">
       
+      {/* Login Gate */}
+      {!authRole && (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <LoginScreen onLogin={handleLogin} />
+        </Suspense>
+      )}
+      
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
         الانتقال إلى المحتوى الرئيسي
@@ -735,6 +877,27 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* User Role Badge + Logout */}
+            {authRole && (
+              <div className="hidden sm:flex items-center gap-1.5">
+                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                  isAdmin
+                    ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/60"
+                    : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                }`}>
+                  <User className="h-3 w-3" />
+                  {authName} — {isAdmin ? "مدير" : "متابع"}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                  title="تسجيل الخروج"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* DB Status Indicator */}
             <div
               className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
@@ -803,6 +966,7 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
+      {authRole && (
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
@@ -810,7 +974,7 @@ export default function App() {
           {viewMode === "overtime" && (
             <div className="lg:col-span-12">
               <Suspense fallback={<div className="flex items-center justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
-                <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} />
+                <OvertimeTracker entries={overtimeEntries} onUpdate={handleUpdateOvertime} isAdmin={isAdmin} />
               </Suspense>
             </div>
           )}
@@ -898,7 +1062,7 @@ export default function App() {
                   <span>تحميل كشف الدوام</span>
                 </h2>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  اسحب لقطة الشاشة أو تصفح ملفاتك
+                  اسحب لقطات الشاشة أو تصفح ملفاتك — يمكن اختيار عدة صور
                 </p>
               </div>
 
@@ -909,7 +1073,7 @@ export default function App() {
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                   role="region"
-                  aria-label="منطقة رفع الصورة"
+                  aria-label="منطقة رفع الصور"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('file-input-main')?.click(); } }}
                   className={`border border-dashed rounded-xl p-6 text-center transition-all focus:outline-none focus:ring-2 focus:ring-slate-300/50 ${
@@ -920,6 +1084,25 @@ export default function App() {
                 >
                   {imagePreview && imagePreview !== "DEMO_MODE" ? (
                     <div className="space-y-3">
+                      {/* Multi-image thumbnails */}
+                      {multiImages.length > 1 && (
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{multiImages.length} صور</span>
+                          {multiImages.map((img, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => { setImage(img); setImagePreview(img); }}
+                              className={`w-10 h-10 rounded-lg border-2 overflow-hidden transition-all ${
+                                imagePreview === img
+                                  ? "border-slate-700 dark:border-slate-300 shadow-sm"
+                                  : "border-slate-200 dark:border-slate-700 opacity-50 hover:opacity-100"
+                              }`}
+                            >
+                              <img src={img} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <img 
                         src={imagePreview} 
                         alt="كشف الدوام المرفوع" 
@@ -939,6 +1122,7 @@ export default function App() {
                             id="file-input-change"
                             type="file" 
                             accept="image/*" 
+                            multiple
                             className="hidden" 
                             onChange={handleFileChange} 
                           />
@@ -952,10 +1136,10 @@ export default function App() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                          اسحب لقطة الشاشة إلى هنا
+                          اسحب لقطات الشاشة إلى هنا
                         </p>
                         <p className="text-[11px] text-slate-400">
-                          PNG، JPG، JPEG
+                          PNG، JPG، JPEG — يمكن اختيار عدة صور
                         </p>
                       </div>
                       <div>
@@ -965,6 +1149,7 @@ export default function App() {
                             id="file-input-main"
                             type="file" 
                             accept="image/*" 
+                            multiple
                             className="hidden" 
                             onChange={handleFileChange} 
                           />
@@ -1029,7 +1214,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleAnalyze}
-                  disabled={loading || !image}
+                  disabled={loading || !image || !isAdmin}
                   aria-label="تحليل لقطة الشاشة"
                   aria-busy={loading}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
@@ -1037,13 +1222,25 @@ export default function App() {
                       ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
                       : !image 
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        : !isAdmin
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                         : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white active:scale-[0.98]"
                   }`}
                 >
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                      <span>جاري المعالجة وقراءة الكشف...</span>
+                      <span>{progressMessage || "جاري المعالجة وقراءة الكشف..."}</span>
+                    </>
+                  ) : !isAdmin ? (
+                    <>
+                      <Eye className="h-4 w-4" />
+                      <span>المشاهدون لا يمكنهم التحليل</span>
+                    </>
+                  ) : multiImages.length > 1 ? (
+                    <>
+                      <TrendingUp className="h-4 w-4" />
+                      <span>حلل {multiImages.length} صور الآن</span>
                     </>
                   ) : (
                     <>
@@ -1985,6 +2182,7 @@ export default function App() {
 
         </div>
       </main>
+      )}
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden">

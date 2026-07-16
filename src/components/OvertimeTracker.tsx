@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -16,6 +16,8 @@ import {
   FileDown,
   Download,
   ArrowDownUp,
+  Upload,
+  Eye,
 } from "lucide-react";
 import { OvertimeEntry } from "../types";
 import { verifyPassword, changePassword } from "../apiClient";
@@ -23,11 +25,12 @@ import { verifyPassword, changePassword } from "../apiClient";
 interface Props {
   entries: OvertimeEntry[];
   onUpdate: (entries: OvertimeEntry[]) => void;
+  isAdmin?: boolean;
 }
 
 const REASON_PRESETS = ["مغادرة", "إجازة", "سبب حر"];
 
-export default function OvertimeTracker({ entries, onUpdate }: Props) {
+export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: Props) {
   const [formMode, setFormMode] = useState<"overtime" | "deduction">("overtime");
   const [employeeName, setEmployeeName] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -53,6 +56,76 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      if (!text) return;
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) {
+        alert("الملف فارغ أو لا يحتوي على بيانات");
+        return;
+      }
+      const header = lines[0].toLowerCase().replace(/["\s]/g, "");
+      const isArabic = header.includes("الموظف") || header.includes("التاريخ");
+      const newEntries: OvertimeEntry[] = [];
+      const errors: string[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+        if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية`); continue; }
+        const [empName, dateVal, hoursVal, notesVal, typeVal, reasonVal] = cols;
+        if (!empName || !dateVal || !hoursVal) { errors.push(`سطر ${i + 1}: بيانات ناقصة`); continue; }
+        const h = parseFloat(hoursVal);
+        if (isNaN(h) || h <= 0 || h > 24) { errors.push(`سطر ${i + 1}: ساعات غير صالحة (${hoursVal})`); continue; }
+        const entryType = typeVal === "deduction" || typeVal === "خصم" ? "deduction" : "overtime";
+        newEntries.push({
+          id: "ot_import_" + Date.now() + "_" + i,
+          employeeName: empName,
+          date: dateVal,
+          hours: h,
+          notes: notesVal || "",
+          type: entryType,
+          reason: entryType === "deduction" ? (reasonVal || notesVal || "") : undefined,
+        });
+      }
+      if (newEntries.length > 0) {
+        if (window.confirm(`تم العثور على ${newEntries.length} سجل صالح. هل تريد إضافتها؟`)) {
+          handleVerifyAndImport(newEntries);
+        }
+      }
+      if (errors.length > 0) {
+        alert("أخطاء في الاستيراد:\n" + errors.slice(0, 10).join("\n"));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleVerifyAndImport = async (entries: OvertimeEntry[]) => {
+    setShowPasswordModal(true);
+    setPendingImport(entries);
+  };
+
+  const [pendingImport, setPendingImport] = useState<OvertimeEntry[] | null>(null);
+
+  const handleConfirmImport = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+    if (!valid) { setPasswordError("الباسورد غير صحيح"); return; }
+    if (pendingImport) {
+      onUpdate([...pendingImport, ...entries]);
+    }
+    setPendingImport(null);
+    setShowPasswordModal(false);
+    setPasswordInput("");
+    setPasswordError(null);
+  };
 
   const uniqueNames = useMemo(() => {
     const names = new Set(entries.map((e) => e.employeeName));
@@ -368,7 +441,25 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               </p>
             </div>
           </div>
-          <div className="flex justify-end mt-4">
+          <div className="flex justify-end gap-2 mt-4">
+            {isAdmin && (
+              <>
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,.txt"
+                  className="hidden"
+                  onChange={handleCSVImport}
+                />
+                <button
+                  onClick={() => csvInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>استيراد CSV</span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 setShowChangePasswordModal(true);
@@ -665,14 +756,23 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
         <button
           onClick={handleAddClick}
+          disabled={!isAdmin}
           className={`mt-3 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 text-white text-sm font-bold rounded-xl shadow-sm transition-all active:scale-[0.98] ${
-            formMode === "deduction"
+            !isAdmin
+              ? "bg-slate-300 dark:bg-slate-600 cursor-not-allowed"
+              : formMode === "deduction"
               ? "bg-rose-600 hover:bg-rose-700 shadow-rose-100 dark:shadow-none"
               : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100 dark:shadow-none"
           }`}
         >
-          {formMode === "deduction" ? <TrendingDown className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          <span>{formMode === "deduction" ? "تسجيل الخصم" : "إضافة السجل"}</span>
+          {!isAdmin ? (
+            <Eye className="h-4 w-4" />
+          ) : formMode === "deduction" ? (
+            <TrendingDown className="h-4 w-4" />
+          ) : (
+            <Plus className="h-4 w-4" />
+          )}
+          <span>{!isAdmin ? "المشاهدون لا يمكنهم الإضافة" : formMode === "deduction" ? "تسجيل الخصم" : "إضافة السجل"}</span>
         </button>
       </div>
 
@@ -715,7 +815,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   </button>
                 </>
               )}
-              {entries.length > 0 && (
+              {entries.length > 0 && isAdmin && (
                 <button
                   onClick={handleClearAll}
                   className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
@@ -828,13 +928,17 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                         {isDeduction ? (entry.reason || "-") : (entry.notes || "-")}
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleDeleteClick(entry.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
-                          title="حذف السجل"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {isAdmin ? (
+                          <button
+                            onClick={() => handleDeleteClick(entry.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                            title="حذف السجل"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -868,7 +972,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Lock className="h-4 w-4 text-amber-600" />
-                <span>{deleteId ? "تأكيد الحذف" : formMode === "deduction" ? "تأكيد الخصم" : "تأكيد الإضافة"}</span>
+                <span>{deleteId ? "تأكيد الحذف" : pendingImport ? "تأكيد الاستيراد" : formMode === "deduction" ? "تأكيد الخصم" : "تأكيد الإضافة"}</span>
               </h3>
               <button
                 onClick={() => {
@@ -876,6 +980,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   setPasswordInput("");
                   setPasswordError(null);
                   setDeleteId(null);
+                  setPendingImport(null);
                 }}
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
               >
@@ -883,13 +988,13 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {deleteId ? "أدخل الباسورد لتأكيد حذف هذا السجل" : formMode === "deduction" ? "أدخل الباسورد لتسجيل الخصم" : "أدخل الباسورد لتسجيل سجل العمل الإضافي"}
+              {deleteId ? "أدخل الباسورد لتأكيد حذف هذا السجل" : pendingImport ? `أدخل الباسورد لاستيراد ${pendingImport.length} سجل` : formMode === "deduction" ? "أدخل الباسورد لتسجيل الخصم" : "أدخل الباسورد لتسجيل سجل العمل الإضافي"}
             </p>
             <input
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { deleteId ? handleConfirmDelete() : handleVerifyAndAdd(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { deleteId ? handleConfirmDelete() : pendingImport ? handleConfirmImport() : handleVerifyAndAdd(); } }}
               placeholder="أدخل الباسورد"
               autoFocus
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
@@ -906,17 +1011,20 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   setPasswordInput("");
                   setPasswordError(null);
                   setDeleteId(null);
+                  setPendingImport(null);
                 }}
                 className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
               >
                 إلغاء
               </button>
               <button
-                onClick={deleteId ? handleConfirmDelete : handleVerifyAndAdd}
+                onClick={deleteId ? handleConfirmDelete : pendingImport ? handleConfirmImport : handleVerifyAndAdd}
                 disabled={passwordLoading || !passwordInput}
                 className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
                   deleteId
                     ? "bg-rose-600 hover:bg-rose-700"
+                    : pendingImport
+                    ? "bg-indigo-600 hover:bg-indigo-700"
                     : formMode === "deduction"
                     ? "bg-rose-600 hover:bg-rose-700"
                     : "bg-emerald-600 hover:bg-emerald-700"
@@ -926,6 +1034,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                 ) : deleteId ? (
                   "حذف"
+                ) : pendingImport ? (
+                  "استيراد"
                 ) : formMode === "deduction" ? (
                   "خصم"
                 ) : (
