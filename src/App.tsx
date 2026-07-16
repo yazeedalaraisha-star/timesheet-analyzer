@@ -28,6 +28,9 @@ import {
   Globe,
   FileDown,
   LogOut,
+  LogIn,
+  X,
+  Shield,
 } from "lucide-react";
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
@@ -44,8 +47,8 @@ import {
 } from "./apiClient";
 import { parseTimeToSeconds } from "./utils/timeUtils";
 const OvertimeTracker = React.lazy(() => import("./components/OvertimeTracker"));
-const LoginScreen = React.lazy(() => import("./components/LoginScreen"));
-import type { UserRole } from "./components/LoginScreen";
+
+type UserRole = "admin" | "viewer";
 
 import { 
   ResponsiveContainer, 
@@ -168,13 +171,14 @@ export default function App() {
   type ViewMode = "main" | "overtime";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
 
-  // Auth state
+  // Auth state — default is viewer (no login needed)
   const [authRole, setAuthRole] = useState<UserRole | null>(() => {
     try { return (localStorage.getItem("auth_role") as UserRole) || null; } catch { return null; }
   });
   const [authName, setAuthName] = useState<string>(() => {
     try { return localStorage.getItem("auth_name") || ""; } catch { return ""; }
   });
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const isAdmin = authRole === "admin";
 
   const handleLogin = (role: UserRole, name: string) => {
@@ -193,6 +197,20 @@ export default function App() {
       localStorage.removeItem("auth_role");
       localStorage.removeItem("auth_name");
     } catch {}
+  };
+
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+
+  const handleAdminLogin = () => {
+    if (adminPasswordInput === "admin@2026") {
+      handleLogin("admin", "يزيد العريشة");
+      setShowAdminLogin(false);
+      setAdminPasswordInput("");
+      setAdminLoginError(null);
+    } else {
+      setAdminLoginError("الباسورد غير صحيح");
+    }
   };
 
   // Multiple images state
@@ -846,13 +864,6 @@ export default function App() {
   return (
     <div id="app-root" className="min-h-screen bg-[#f5f6f8] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-slate-200 selection:text-slate-900 transition-colors duration-200">
       
-      {/* Login Gate */}
-      {!authRole && (
-        <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
-          <LoginScreen onLogin={handleLogin} />
-        </Suspense>
-      )}
-      
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
         الانتقال إلى المحتوى الرئيسي
@@ -878,15 +889,11 @@ export default function App() {
 
           <div className="flex items-center gap-2.5">
             {/* User Role Badge + Logout */}
-            {authRole && (
+            {isAdmin ? (
               <div className="hidden sm:flex items-center gap-1.5">
-                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
-                  isAdmin
-                    ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/60"
-                    : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-                }`}>
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/60">
                   <User className="h-3 w-3" />
-                  {authName} — {isAdmin ? "مدير" : "متابع"}
+                  {authName} — مدير
                 </span>
                 <button
                   onClick={handleLogout}
@@ -896,6 +903,14 @@ export default function App() {
                   <LogOut className="h-3.5 w-3.5" />
                 </button>
               </div>
+            ) : (
+              <button
+                onClick={() => setShowAdminLogin(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+              >
+                <Shield className="h-3 w-3" />
+                دخول المدير
+              </button>
             )}
 
             {/* DB Status Indicator */}
@@ -966,7 +981,6 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      {authRole && (
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" tabIndex={-1}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
@@ -2182,7 +2196,6 @@ export default function App() {
 
         </div>
       </main>
-      )}
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden">
@@ -2191,6 +2204,49 @@ export default function App() {
           <p className="mt-1 font-bold text-slate-500 dark:text-slate-400">YAZEED AL-ARAISHA</p>
         </div>
       </footer>
+
+      {/* Admin Login Modal */}
+      {showAdminLogin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4 text-amber-600" />
+                <span>دخول المدير</span>
+              </h3>
+              <button onClick={() => setShowAdminLogin(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">أدخلباسورد المدير للحصول على صلاحيات كاملة</p>
+            <input
+              type="password"
+              value={adminPasswordInput}
+              onChange={(e) => setAdminPasswordInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdminLogin(); }}
+              placeholder="باسورد المدير"
+              autoFocus
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            {adminLoginError && (
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl">
+                {adminLoginError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => { setShowAdminLogin(false); setAdminPasswordInput(""); setAdminLoginError(null); }}
+                className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
+                إلغاء
+              </button>
+              <button onClick={handleAdminLogin} disabled={!adminPasswordInput}
+                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${!adminPasswordInput ? "opacity-50 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700"}`}>
+                <LogIn className="h-4 w-4" />
+                دخول
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
