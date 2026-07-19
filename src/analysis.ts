@@ -47,7 +47,7 @@ export function formatDateDisplay(date: Date): string {
 }
 
 function getArabicDayName(date: Date): string {
-  const days = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   return days[date.getDay()];
 }
 

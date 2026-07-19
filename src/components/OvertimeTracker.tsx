@@ -131,6 +131,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   };
 
   const [pendingImport, setPendingImport] = useState<OvertimeEntry[] | null>(null);
+  const [pendingClearAll, setPendingClearAll] = useState(false);
 
   const handleConfirmImport = async () => {
     setPasswordLoading(true);
@@ -140,6 +141,13 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
     if (!valid) { setPasswordError("الباسورد غير صحيح"); return; }
     if (pendingImport) {
       onUpdate([...pendingImport, ...entries]);
+    } else if (pendingClearAll) {
+      if (searchQuery.trim()) {
+        onUpdate(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+      } else {
+        onUpdate([]);
+      }
+      setPendingClearAll(false);
     }
     setPendingImport(null);
     setShowPasswordModal(false);
@@ -297,11 +305,13 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   const handleClearAll = () => {
     if (searchQuery.trim()) {
       if (window.confirm(`هل أنت متأكد من حذف جميع سجلات ${searchQuery.trim()}؟`)) {
-        onUpdate(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+        setPendingClearAll(true);
+        setShowPasswordModal(true);
       }
     } else {
       if (window.confirm("هل أنت متأكد من حذف جميع سجلات العمل الإضافي لجميع الموظفين؟")) {
-        onUpdate([]);
+        setPendingClearAll(true);
+        setShowPasswordModal(true);
       }
     }
   };
@@ -1001,6 +1011,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   setPasswordError(null);
                   setDeleteId(null);
                   setPendingImport(null);
+                  setPendingClearAll(false);
                 }}
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
               >

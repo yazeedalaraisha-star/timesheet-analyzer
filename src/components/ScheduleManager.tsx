@@ -5,7 +5,6 @@ import {
   Plus,
   Trash2,
   Search,
-  Users,
   Building2,
   Clock,
   ChevronLeft,

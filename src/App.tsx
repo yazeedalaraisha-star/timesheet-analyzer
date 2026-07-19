@@ -13,7 +13,6 @@ import {
   XCircle, 
   HelpCircle, 
   Loader2, 
-  RefreshCw, 
   Printer, 
   Eye, 
   EyeOff, 
@@ -2253,7 +2252,7 @@ export default function App() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">أدخلباسورد المدير للحصول على صلاحيات كاملة</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">أدخل باسورد المدير للحصول على صلاحيات كاملة</p>
             <input
               type="password"
               value={adminPasswordInput}
