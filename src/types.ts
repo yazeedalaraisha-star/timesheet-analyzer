@@ -141,6 +141,7 @@ export interface DaySchedule {
   dayName: string;
   shifts: string[];
   isOff: boolean;
+  leaveType?: string;
 }
 
 export interface EmployeeSchedule {

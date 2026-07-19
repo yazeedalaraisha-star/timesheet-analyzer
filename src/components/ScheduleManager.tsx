@@ -183,13 +183,21 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       const days = ensureMonthDays(emp);
       const day = { ...days[dayIdx] };
       if (shiftName === "OFF") {
-        day.isOff = !day.isOff;
-        day.shifts = day.isOff ? [] : day.shifts;
+        if (day.isOff) {
+          day.isOff = false;
+          day.shifts = [];
+          day.leaveType = undefined;
+        } else {
+          day.isOff = true;
+          day.shifts = [];
+        }
       } else if (shiftName === "CLEAR") {
         day.isOff = false;
         day.shifts = [];
+        day.leaveType = undefined;
       } else {
         day.isOff = false;
+        day.leaveType = undefined;
         if (day.shifts.includes(shiftName)) {
           day.shifts = day.shifts.filter((s) => s !== shiftName);
         } else {
@@ -201,6 +209,32 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     });
     onUpdate(updated);
   };
+
+  const handleSetLeaveType = (empId: string, dayIdx: number, leaveType: string) => {
+    const updated = schedules.map((emp) => {
+      if (emp.id !== empId) return emp;
+      const days = ensureMonthDays(emp);
+      const day = { ...days[dayIdx] };
+      day.isOff = true;
+      day.shifts = [];
+      day.leaveType = leaveType;
+      days[dayIdx] = day;
+      return { ...emp, days };
+    });
+    onUpdate(updated);
+  };
+
+  const LEAVE_TYPES = [
+    "إجازة سنوية",
+    "إجازة مرضية",
+    "إجازة طارئة",
+    "إجازة بدون راتب",
+    "إجازة أمومة",
+    "إجازة حج",
+    "إجازة عزاء",
+    "إجازة رسمية",
+    "مهمة رسمية",
+  ];
 
   const handleAddEmployee = () => {
     if (!newName.trim() || !selectedDept) return;
@@ -536,7 +570,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       const days = ensureMonthDays(emp);
       const row: any[] = [emp.employeeName];
       days.forEach((d) => {
-        if (d.isOff) row.push("OFF");
+        if (d.isOff) row.push(d.leaveType || "OFF");
         else if (d.shifts.length > 0) row.push(d.shifts.join(""));
         else row.push("");
       });
@@ -854,32 +888,47 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
       {/* Shift picker */}
       {editingCell && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">اختر الشفت:</span>
-          {SHIFT_NAMES.map((s) => (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">اختر:</span>
+            {SHIFT_NAMES.map((s) => (
+              <button
+                key={s}
+                onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, s)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${SHIFT_COLORS[s]} hover:scale-105 active:scale-95`}
+              >
+                {s}
+              </button>
+            ))}
             <button
-              key={s}
-              onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, s)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${SHIFT_COLORS[s]} hover:scale-105 active:scale-95`}
+              onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "OFF")}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
             >
-              {s}
+              إجازة
             </button>
-          ))}
-          <button
-            onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "OFF")}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
-          >
-            إجازة
-          </button>
-          <button
-            onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "CLEAR")}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 hover:scale-105 active:scale-95 transition-all"
-          >
-            مسح
-          </button>
-          <button onClick={() => setEditingCell(null)} className="mr-auto p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-all">
-            ✕
-          </button>
+            <button
+              onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "CLEAR")}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 hover:scale-105 active:scale-95 transition-all"
+            >
+              مسح
+            </button>
+            <button onClick={() => setEditingCell(null)} className="mr-auto p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-all">
+              ✕
+            </button>
+          </div>
+          {/* Leave type selector */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-400">نوع الإجازة:</span>
+            {LEAVE_TYPES.map((lt) => (
+              <button
+                key={lt}
+                onClick={() => handleSetLeaveType(editingCell.empId, editingCell.dayIdx, lt)}
+                className="px-2 py-1 text-[10px] font-bold rounded-lg border bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800 hover:scale-105 active:scale-95 transition-all"
+              >
+                {lt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -988,7 +1037,11 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                             }`}
                           >
                             {d.isOff ? (
-                              <span className="text-[9px] font-bold text-red-400">OFF</span>
+                              d.leaveType ? (
+                                <span className="text-[8px] font-bold text-rose-500 dark:text-rose-400 leading-tight block">{d.leaveType}</span>
+                              ) : (
+                                <span className="text-[9px] font-bold text-red-400">OFF</span>
+                              )
                             ) : d.shifts.length > 0 ? (
                               <div className="flex items-center justify-center gap-0.5 flex-wrap">
                                 {d.shifts.map((s) => (
