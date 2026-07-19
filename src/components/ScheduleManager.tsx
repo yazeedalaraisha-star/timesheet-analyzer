@@ -8,16 +8,18 @@ import {
   Users,
   Building2,
   Clock,
-  AlertCircle,
-  Download,
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
   FileDown,
+  Download,
+  Camera,
+  Loader2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
 import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, SHIFT_DEFINITIONS, ARABIC_DAYS } from "../types";
+import { analyzeScheduleImage } from "../apiClient";
 
 interface Props {
   schedules: EmployeeSchedule[];
@@ -56,15 +58,18 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+  const [selectedDept, setSelectedDept] = useState<string | null>(null);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [showNewDeptInput, setShowNewDeptInput] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterDept, setFilterDept] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingCell, setEditingCell] = useState<{ empId: string; dayIdx: number } | null>(null);
-  const [selectedShift, setSelectedShift] = useState<string>("A");
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState("");
   const gridRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [newName, setNewName] = useState("");
-  const [newDept, setNewDept] = useState("");
 
   const monthLabel = useMemo(() => {
     const months = [
@@ -77,28 +82,26 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const monthDays = useMemo(() => generateMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
 
   const departments = useMemo(() => {
-    const depts = new Set(schedules.map((s) => s.department).filter(Boolean));
-    return Array.from(depts).sort();
-  }, [schedules]);
-
-  const filteredSchedules = useMemo(() => {
-    let result = schedules;
-    if (searchQuery.trim()) {
-      result = result.filter((s) => s.employeeName.includes(searchQuery.trim()));
-    }
-    if (filterDept) {
-      result = result.filter((s) => s.department === filterDept);
-    }
-    return result;
-  }, [schedules, searchQuery, filterDept]);
-
-  const perDeptSummary = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of schedules) {
-      map.set(s.department || "بدون قسم", (map.get(s.department || "بدون قسم") || 0) + 1);
+      const dept = s.department || "بدون قسم";
+      map.set(dept, (map.get(dept) || 0) + 1);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [schedules]);
+
+  const deptSchedules = useMemo(() => {
+    if (!selectedDept) return [];
+    return schedules.filter((s) => (s.department || "بدون قسم") === selectedDept);
+  }, [schedules, selectedDept]);
+
+  const filteredDeptSchedules = useMemo(() => {
+    let result = deptSchedules;
+    if (searchQuery.trim()) {
+      result = result.filter((s) => s.employeeName.includes(searchQuery.trim()));
+    }
+    return result;
+  }, [deptSchedules, searchQuery]);
 
   const ensureMonthDays = useCallback((emp: EmployeeSchedule): DaySchedule[] => {
     const existing = new Map(emp.days.map((d) => [d.date, d]));
@@ -113,6 +116,30 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const handleNextMonth = () => {
     if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear((y) => y + 1); }
     else setCurrentMonth((m) => m + 1);
+  };
+
+  const handleAddDept = () => {
+    const name = newDeptName.trim();
+    if (!name) return;
+    if (!departments.find(([d]) => d === name)) {
+      const placeholder: EmployeeSchedule = {
+        id: "sch_dept_" + Date.now(),
+        employeeName: "—",
+        department: name,
+        days: generateMonthDays(currentYear, currentMonth),
+      };
+      onUpdate([...schedules, placeholder]);
+    }
+    setSelectedDept(name);
+    setNewDeptName("");
+    setShowNewDeptInput(false);
+  };
+
+  const handleDeleteDept = (dept: string) => {
+    if (window.confirm(`هل أنت متأكد من حذف جميع موظفي قسم "${dept}"؟`)) {
+      onUpdate(schedules.filter((s) => (s.department || "بدون قسم") !== dept));
+      if (selectedDept === dept) setSelectedDept(null);
+    }
   };
 
   const handleCellClick = (empId: string, dayIdx: number) => {
@@ -149,16 +176,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const handleAddEmployee = () => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !selectedDept) return;
     const entry: EmployeeSchedule = {
       id: "sch_" + Date.now(),
       employeeName: newName.trim(),
-      department: newDept.trim(),
+      department: selectedDept,
       days: generateMonthDays(currentYear, currentMonth),
     };
-    onUpdate([entry, ...schedules]);
+    onUpdate([...schedules, entry]);
     setNewName("");
-    setNewDept("");
     setShowAddForm(false);
   };
 
@@ -168,9 +194,72 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
   };
 
-  const handleDeleteAll = () => {
-    if (window.confirm("هل أنت متأكد من حذف جميع الموظفين من الجدول؟")) {
-      onUpdate([]);
+  const handleImageImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    setOcrLoading(true);
+    setOcrStatus("جاري قراءة الصورة...");
+
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      setOcrStatus("جاري تحليل الصورة بالذكاء الاصطناعي...");
+
+      const result = await analyzeScheduleImage(base64, currentMonth + 1, currentYear);
+
+      if (!result?.employees || result.employees.length === 0) {
+        alert("لم يتم العثور على بيانات في الصورة");
+        setOcrLoading(false);
+        return;
+      }
+
+      const dept = selectedDept || "بدون قسم";
+      const newSchedules: EmployeeSchedule[] = [];
+      for (const emp of result.employees) {
+        if (!emp.name || emp.name === "—") continue;
+        const days = monthDays.map((md) => {
+          const dayNum = parseInt(md.date.split("-")[2]);
+          const cellVal = String(emp.days?.[dayNum] || "").trim().toUpperCase();
+          if (cellVal === "OFF" || cellVal === "إجازة" || cellVal === "ع" || cellVal === "ح") {
+            return { ...md, isOff: true, shifts: [] };
+          }
+          const shiftChars = cellVal.replace(/[^A-C]/g, "").split("").filter(Boolean);
+          if (shiftChars.length > 0) {
+            return { ...md, isOff: false, shifts: [...new Set(shiftChars)].sort() };
+          }
+          return md;
+        });
+        const totalShifts = days.filter((d) => !d.isOff && d.shifts.length > 0).length;
+        if (totalShifts === 0) continue;
+        newSchedules.push({
+          id: "sch_ocr_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+          employeeName: emp.name,
+          department: dept,
+          days,
+        });
+      }
+
+      if (newSchedules.length > 0) {
+        const filtered = schedules.filter(
+          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+        );
+        onUpdate([...filtered, ...newSchedules]);
+        alert(`تم استخراج جدول ${newSchedules.length} موظف من الصورة`);
+      } else {
+        alert("لم يتم استخراج بيانات صالحة من الصورة");
+      }
+    } catch (err: any) {
+      alert("خطأ في قراءة الصورة: " + (err.message || "خطأ غير معروف"));
+    } finally {
+      setOcrLoading(false);
+      setOcrStatus("");
     }
   };
 
@@ -204,6 +293,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
   const parseExcelData = (rows: Record<string, any>[]) => {
     if (rows.length < 2) { alert("الملف فارغ"); return; }
+    const dept = selectedDept || "بدون قسم";
 
     const headerRow = rows[0].map(String).map((h) => h?.trim() || "");
     const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name|employee/i.test(h));
@@ -251,22 +341,16 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       }
     }
 
-    if (dateHeaders.length === 0) {
-      const inferred = generateMonthDays(currentYear, currentMonth);
-      dateHeaders.push(...inferred.map((d, i) => ({ idx: i + 2, dateStr: d.date })));
-    }
-
     const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
-    const errors: string[] = [];
 
     for (let r = 1; r < rows.length; r++) {
       const cols = rows[r];
-      const empName = String(cols[nameIdx] || "").trim();
+      const empName = String(cols[nameIdx >= 0 ? nameIdx : 0] || "").trim();
       if (!empName) continue;
-      const dept = deptIdx >= 0 ? String(cols[deptIdx] || "").trim() : "";
+      const empDept = deptIdx >= 0 ? String(cols[deptIdx] || "").trim() : dept;
 
-      const entry = map.get(empName) || { dept, days: new Map<string, DaySchedule>() };
-      if (dept && !entry.dept) entry.dept = dept;
+      const entry = map.get(empName) || { dept: empDept, days: new Map<string, DaySchedule>() };
+      if (empDept && !entry.dept) entry.dept = empDept;
 
       for (const dh of dateHeaders) {
         const cellVal = String(cols[dh.idx] || "").trim().toUpperCase();
@@ -290,7 +374,6 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
         entry.days.set(dh.dateStr, existing);
       }
-
       map.set(empName, entry);
     }
 
@@ -301,14 +384,17 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       newSchedules.push({
         id: "sch_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
         employeeName: name,
-        department: data.dept,
+        department: data.dept || dept,
         days: daysArray,
       });
     }
 
     if (newSchedules.length > 0) {
-      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم للجدول؟`)) {
-        onUpdate([...schedules, ...newSchedules]);
+      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم؟`)) {
+        const existing = schedules.filter(
+          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+        );
+        onUpdate([...existing, ...newSchedules]);
       }
     } else {
       alert("لم يتم العثور على بيانات صالحة");
@@ -316,6 +402,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const parseCSVAndImport = (text: string) => {
+    if (text.trim().length < 10) { alert("الملف فارغ"); return; }
+    const dept = selectedDept || "بدون قسم";
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) { alert("الملف فارغ"); return; }
 
@@ -363,10 +451,10 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
       const empName = cols[nameIdx >= 0 ? nameIdx : 0];
       if (!empName) continue;
-      const dept = deptIdx >= 0 ? cols[deptIdx] : "";
+      const empDept = deptIdx >= 0 ? cols[deptIdx] : dept;
 
-      const entry = map.get(empName) || { dept, days: new Map<string, DaySchedule>() };
-      if (dept && !entry.dept) entry.dept = dept;
+      const entry = map.get(empName) || { dept: empDept, days: new Map<string, DaySchedule>() };
+      if (empDept && !entry.dept) entry.dept = empDept;
 
       for (const dh of dateHeaders) {
         const cellVal = (cols[dh.idx] || "").trim().toUpperCase();
@@ -396,27 +484,30 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       newSchedules.push({
         id: "sch_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
         employeeName: name,
-        department: data.dept,
+        department: data.dept || dept,
         days: daysArray,
       });
     }
 
     if (newSchedules.length > 0) {
       if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم؟`)) {
-        onUpdate([...schedules, ...newSchedules]);
+        const existing = schedules.filter(
+          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+        );
+        onUpdate([...existing, ...newSchedules]);
       }
     }
   };
 
   const handleExportExcel = () => {
-    const headerRow: any[] = ["الموظف", "القسم"];
+    const headerRow: any[] = ["الموظف"];
     monthDays.forEach((d) => { headerRow.push(`${parseInt(d.date.split("-")[2])}`); });
     headerRow.push("الساعات");
 
     const data: any[][] = [];
-    for (const emp of filteredSchedules) {
+    for (const emp of filteredDeptSchedules) {
       const days = ensureMonthDays(emp);
-      const row: any[] = [emp.employeeName, emp.department || ""];
+      const row: any[] = [emp.employeeName];
       days.forEach((d) => {
         if (d.isOff) row.push("OFF");
         else if (d.shifts.length > 0) row.push(d.shifts.join(""));
@@ -427,59 +518,37 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
 
     const ws = XLSX.utils.aoa_to_sheet([headerRow, ...data]);
-    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, ...monthDays.map(() => ({ wch: 6 })), { wch: 8 }];
+    ws["!cols"] = [{ wch: 20 }, ...monthDays.map(() => ({ wch: 6 })), { wch: 8 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "جدول الدوام");
-    XLSX.writeFile(wb, `جدول_الدوام_${monthLabel}.xlsx`);
+    XLSX.writeFile(wb, `جدول_الدوام_${selectedDept || ""}_${monthLabel}.xlsx`);
   };
 
   const handleExportImage = async () => {
     if (!gridRef.current) return;
-    const btn = document.getElementById("export-img-btn");
-    if (btn) btn.textContent = "جاري التصدير...";
     try {
-      const canvas = await html2canvas(gridRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        logging: false,
-        useCORS: true,
-      });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false });
       const link = document.createElement("a");
-      link.download = `جدول_الدوام_${monthLabel}.png`;
+      link.download = `جدول_الدوام_${selectedDept || ""}_${monthLabel}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
-    } catch {
-      alert("حدث خطأ أثناء التصدير كصورة");
-    }
-    if (btn) btn.textContent = "صورة PNG";
+    } catch { alert("حدث خطأ أثناء التصدير"); }
   };
 
   const handleExportPDF = async () => {
     if (!gridRef.current) return;
-    const btn = document.getElementById("export-pdf-btn");
-    if (btn) btn.textContent = "جاري التصدير...";
     try {
-      const canvas = await html2canvas(gridRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        logging: false,
-        useCORS: true,
-      });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false });
       const { default: jsPDF } = await import("jspdf");
       const imgData = canvas.toDataURL("image/png");
-      const pdfWidth = canvas.width;
-      const pdfHeight = canvas.height;
       const pdf = new jsPDF({
-        orientation: pdfWidth > pdfHeight ? "l" : "p",
+        orientation: canvas.width > canvas.height ? "l" : "p",
         unit: "px",
-        format: [pdfWidth, pdfHeight],
+        format: [canvas.width, canvas.height],
       });
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`جدول_الدوام_${monthLabel}.pdf`);
-    } catch {
-      alert("حدث خطأ أثناء التصدير كـ PDF");
-    }
-    if (btn) btn.textContent = "PDF";
+      pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+      pdf.save(`جدول_الدوام_${selectedDept || ""}_${monthLabel}.pdf`);
+    } catch { alert("حدث خطأ أثناء التصدير"); }
   };
 
   const dayNameShort = (dayName: string) => {
@@ -489,26 +558,147 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
   const isWeekend = (d: DaySchedule) => d.dayName === "الجمعة" || d.dayName === "السبت";
 
+  // Department Selection View
+  if (!selectedDept) {
+    return (
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+          <div className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-800 dark:text-white">جدول الدوام</h2>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                  اختر قسم لعرض جدول الدوام — الشفتات: A (06-14) / B (14-22) / C (22-06)
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Month Nav */}
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={handlePrevMonth} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+            <ChevronRight className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          </button>
+          <span className="text-sm font-black text-slate-700 dark:text-white min-w-[140px] text-center">{monthLabel}</span>
+          <button onClick={handleNextMonth} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+            <ChevronLeft className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          </button>
+        </div>
+
+        {/* Add New Department */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5">
+          <h3 className="font-bold text-slate-700 dark:text-white text-sm mb-3">إضافة قسم جديد</h3>
+          {showNewDeptInput ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newDeptName}
+                onChange={(e) => setNewDeptName(e.target.value)}
+                placeholder="اسم القسم..."
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && handleAddDept()}
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
+              />
+              <button onClick={handleAddDept} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all">
+                حفظ
+              </button>
+              <button onClick={() => { setShowNewDeptInput(false); setNewDeptName(""); }} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
+                إلغاء
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowNewDeptInput(true)}
+              className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 text-sm font-bold rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-all w-full justify-center"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة قسم جديد
+            </button>
+          )}
+        </div>
+
+        {/* Department List */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-slate-400" />
+              الأقسام ({departments.length})
+            </h3>
+          </div>
+          {departments.length === 0 ? (
+            <div className="py-10 text-center text-slate-400">
+              <Building2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-bold">لا يوجد أقسام بعد</p>
+              <p className="text-xs mt-1">أضف قسم جديد للبدء</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
+              {departments.map(([dept, count]) => (
+                <div
+                  key={dept}
+                  className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 cursor-pointer transition-all"
+                  onClick={() => setSelectedDept(dept)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{dept}</span>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{count} موظف</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDept(dept); }}
+                      className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 transition-all"
+                      title="حذف القسم"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <ChevronLeft className="h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Department Grid View
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Header with Back */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
         <div className="p-5">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setSelectedDept(null); setEditingCell(null); }}
+              className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-lg transition-all"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
             <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
-              <Calendar className="h-5 w-5" />
+              <Building2 className="h-5 w-5" />
             </div>
-            <div>
-              <h2 className="text-lg font-black text-slate-800 dark:text-white">جدول الدوام الشهري</h2>
+            <div className="flex-1">
+              <h2 className="text-lg font-black text-slate-800 dark:text-white">{selectedDept}</h2>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                الشフトات: A (06-14) / B (14-22) / C (22-06) — كل شفت 8 ساعات
+                {deptSchedules.length} موظف — {monthLabel}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Summary + Month Nav */}
+      {/* Month Nav + Hours */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button onClick={handlePrevMonth} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
@@ -519,50 +709,18 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
             <ChevronLeft className="h-4 w-4 text-slate-600 dark:text-slate-300" />
           </button>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <Clock className="h-3 w-3 inline ml-1" />
+            {deptSchedules.reduce((sum, emp) => sum + calculateTotalHours(ensureMonthDays(emp)), 0)} ساعة إجمالي
+          </span>
           {SHIFT_NAMES.map((s) => (
             <span key={s} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${SHIFT_COLORS[s]}`}>
               {s}: {SHIFT_DEFINITIONS[s].startTime}-{SHIFT_DEFINITIONS[s].endTime}
             </span>
           ))}
         </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
-            <Users className="h-3.5 w-3.5 text-slate-400" />
-            <span className="font-bold text-slate-600 dark:text-slate-300">{schedules.length}</span>
-            <span className="text-slate-400">موظف</span>
-          </div>
-          {perDeptSummary.length > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
-              <Building2 className="h-3.5 w-3.5 text-slate-400" />
-              <span className="font-bold text-slate-600 dark:text-slate-300">{perDeptSummary.length}</span>
-              <span className="text-slate-400">قسم</span>
-            </div>
-          )}
-        </div>
       </div>
-
-      {/* Department badges */}
-      {perDeptSummary.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {perDeptSummary.map(([dept, count]) => (
-            <button
-              key={dept}
-              onClick={() => setFilterDept(filterDept === dept ? "" : dept)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                filterDept === dept
-                  ? "bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-800 dark:border-slate-200"
-                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-              }`}
-            >
-              {dept}
-              <span className="text-[10px] opacity-60">{count}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-2">
@@ -574,6 +732,17 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           <Upload className="h-3.5 w-3.5" />
           رفع ملف
         </button>
+
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageImport} />
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          disabled={ocrLoading}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+        >
+          {ocrLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+          {ocrLoading ? ocrStatus || "جاري التحليل..." : "رفع صورة جدول"}
+        </button>
+
         <button
           onClick={() => setShowAddForm(!showAddForm)}
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all"
@@ -581,33 +750,24 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           <Plus className="h-3.5 w-3.5" />
           إضافة موظف
         </button>
-        {filteredSchedules.length > 0 && (
+
+        {filteredDeptSchedules.length > 0 && (
           <>
-            <button
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all"
-            >
+            <button onClick={handleExportExcel} className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all">
               <FileDown className="h-3.5 w-3.5" />
               Excel
             </button>
-            <button
-              id="export-pdf-btn"
-              onClick={handleExportPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all"
-            >
+            <button onClick={handleExportPDF} className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all">
               <Download className="h-3.5 w-3.5" />
               PDF
             </button>
-            <button
-              id="export-img-btn"
-              onClick={handleExportImage}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all"
-            >
+            <button onClick={handleExportImage} className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all">
               <ImageIcon className="h-3.5 w-3.5" />
-              صورة PNG
+              صورة
             </button>
           </>
         )}
+
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <input
@@ -620,17 +780,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         </div>
       </div>
 
-      {/* Shift picker for editing */}
+      {/* Shift picker */}
       {editingCell && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400">اختر الشفت:</span>
           {SHIFT_NAMES.map((s) => (
             <button
               key={s}
-              onClick={() => { setSelectedShift(s); handleToggleShift(editingCell.empId, editingCell.dayIdx, s); }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                SHIFT_COLORS[s]
-              } hover:scale-105 active:scale-95`}
+              onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, s)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${SHIFT_COLORS[s]} hover:scale-105 active:scale-95`}
             >
               {s}
             </button>
@@ -658,41 +816,24 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-4">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-3">
             <Plus className="h-4 w-4 text-emerald-600" />
-            إضافة موظف جديد — {monthLabel}
+            إضافة موظف لقسم: {selectedDept}
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">اسم الموظف</label>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="اسم الموظف"
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">القسم</label>
-              <input
-                type="text"
-                value={newDept}
-                onChange={(e) => setNewDept(e.target.value)}
-                placeholder="مثال: المحاسبة"
-                list="dept-list-schedule"
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
-              />
-              <datalist id="dept-list-schedule">
-                {departments.map((d) => <option key={d} value={d} />)}
-              </datalist>
-            </div>
-            <div className="flex items-end gap-2">
-              <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
-                إلغاء
-              </button>
-              <button onClick={handleAddEmployee} disabled={!newName.trim()} className={`px-4 py-2 text-white text-sm font-bold rounded-xl transition-all ${!newName.trim() ? "opacity-50 cursor-not-allowed bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}>
-                حفظ
-              </button>
-            </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="اسم الموظف"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleAddEmployee()}
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
+            />
+            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
+              إلغاء
+            </button>
+            <button onClick={handleAddEmployee} disabled={!newName.trim()} className={`px-4 py-2 text-white text-sm font-bold rounded-xl transition-all ${!newName.trim() ? "opacity-50 cursor-not-allowed bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+              حفظ
+            </button>
           </div>
         </div>
       )}
@@ -702,25 +843,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
             <Calendar className="h-4 w-4 text-slate-400" />
-            {monthLabel} ({filteredSchedules.length}{searchQuery || filterDept ? ` من ${schedules.length}` : ""} موظف)
-            {filteredSchedules.length > 0 && (
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mr-2">
-                إجمالي: {filteredSchedules.reduce((sum, emp) => sum + calculateTotalHours(ensureMonthDays(emp)), 0)} ساعة
-              </span>
-            )}
+            {selectedDept} — {monthLabel} ({filteredDeptSchedules.length} موظف)
           </h3>
-          {filteredSchedules.length > 0 && (
-            <button onClick={handleDeleteAll} className="text-[10px] text-red-400 hover:text-red-600 font-bold transition-all">
-              حذف الكل
-            </button>
-          )}
         </div>
 
-        {filteredSchedules.length === 0 ? (
+        {filteredDeptSchedules.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500">
             <Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm font-bold">{schedules.length === 0 ? "لا يوجد جداول دوام" : "لا توجد نتائج"}</p>
-            <p className="text-xs mt-1">{schedules.length === 0 ? "ارفع ملف Excel أو أضف موظفين يدوياً" : "جرّب تغيير الفلتر"}</p>
+            <p className="text-sm font-bold">لا يوجد موظفين في هذا القسم</p>
+            <p className="text-xs mt-1">ارفع ملف أو صورة أو أضف موظفين يدوياً</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -729,7 +860,6 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                 <tr className="bg-slate-50/80 dark:bg-slate-800/30">
                   <th className="py-2 px-2 sticky right-0 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400">#</th>
                   <th className="py-2 px-2 sticky right-6 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400 whitespace-nowrap">الموظف</th>
-                  <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap">القسم</th>
                   <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap min-w-[50px]">الساعات</th>
                   {monthDays.map((d, i) => {
                     const dayNum = parseInt(d.date.split("-")[2]);
@@ -744,22 +874,21 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                {filteredSchedules.map((emp, idx) => {
+                {filteredDeptSchedules.map((emp, idx) => {
                   const days = ensureMonthDays(emp);
                   const totalHours = calculateTotalHours(days);
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
-                      <td className="py-1.5 px-2 sticky right-0 bg-white dark:bg-slate-900 z-10 font-bold text-slate-400">{filteredSchedules.length - idx}</td>
+                      <td className="py-1.5 px-2 sticky right-0 bg-white dark:bg-slate-900 z-10 font-bold text-slate-400">{filteredDeptSchedules.length - idx}</td>
                       <td className="py-1.5 px-2 sticky right-6 bg-white dark:bg-slate-900 z-10">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap text-[11px]">{emp.employeeName}</span>
-                          <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title="حذف">
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          {emp.employeeName !== "—" && (
+                            <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title="حذف">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{emp.department || "—"}</span>
                       </td>
                       <td className="py-1.5 px-2 text-center">
                         <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
@@ -774,8 +903,9 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                         return (
                           <td
                             key={di}
-                            onClick={() => handleCellClick(emp.id, di)}
-                            className={`py-1 px-1 text-center cursor-pointer transition-all ${
+                            onClick={() => emp.employeeName !== "—" && handleCellClick(emp.id, di)}
+                            className={`py-1 px-1 text-center transition-all ${
+                              emp.employeeName !== "—" ? "cursor-pointer" : ""} ${
                               isActive ? "bg-slate-200 dark:bg-slate-700 ring-2 ring-slate-400" :
                               weekend ? "bg-slate-50/80 dark:bg-slate-800/30" : "hover:bg-slate-100 dark:hover:bg-slate-800/40"
                             }`}

@@ -112,3 +112,11 @@ export async function saveSchedulesToDB(schedules: EmployeeSchedule[]): Promise<
   });
   return data?.ok ?? false;
 }
+
+export async function analyzeScheduleImage(base64Image: string, month: number, year: number): Promise<any> {
+  const data = await apiFetch<any>("/api/analyze-schedule", {
+    method: "POST",
+    body: JSON.stringify({ image: base64Image, month, year }),
+  });
+  return data;
+}

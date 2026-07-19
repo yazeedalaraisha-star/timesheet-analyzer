@@ -512,6 +512,100 @@ async function startServer() {
     }
   });
 
+  // API Endpoint for schedule image OCR
+  app.post("/api/analyze-schedule", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ error: "تم تجاوز الحد المسموح. انتظر دقيقة ثم حاول مرة أخرى." });
+      }
+
+      const { image, month, year } = req.body;
+      if (!image) {
+        return res.status(400).json({ error: "الرجاء توفير صورة جدول الدوام." });
+      }
+
+      let base64Data = image;
+      let mimeType = "image/png";
+      if (image.startsWith("data:")) {
+        const matches = image.match(/^data:([^;]+);base64,(.*)$/);
+        if (matches && matches.length === 3) {
+          mimeType = matches[1];
+          base64Data = matches[2];
+        }
+      }
+
+      const estimatedSizeBytes = Math.ceil((base64Data.length * 3) / 4);
+      if (estimatedSizeBytes > MAX_IMAGE_SIZE_BYTES) {
+        return res.status(413).json({ error: `حجم الصورة يتجاوز ${MAX_IMAGE_SIZE_MB} ميغابايت.` });
+      }
+
+      const ai = getGeminiClient();
+
+      const imagePart = {
+        inlineData: { mimeType, data: base64Data },
+      };
+
+      const targetMonth = month || new Date().getMonth() + 1;
+      const targetYear = year || new Date().getFullYear();
+
+      const promptPart = {
+        text: `أنت خبير استخراج بيانات من جداول الدوام. قم بقراءة الصورة واستخراج جدول الدوام الشهري.
+
+التعليمات:
+1. اقرأ جميع أسماء الموظفين من الجدول.
+2. لكل موظف، اقرأ الشفتات/الأيام المتاحة في الشهر.
+3. الشفتات قد تكون مكتوبة كأحرف: A, B, C أو أرقام أو أسماء.
+4. A = نهاري (06-14)، B = مسائي (14-22)، C = ليلي (22-06).
+5. إذا كان اليوم مكتوب فيه "إجازة" أو "OFF" أو "ع" اعتبره يوم إجازة.
+6. الأرقام العربية (٠١٢٣٤٥٦٧٨٩) حوّلها لأرقام لاتينية.
+7. إذا وجدت أكثر من شفت بنفس اليوم، اذكرها جميعاً (مثلاً A+B).
+8. الشهر المطلوب: ${targetMonth}/${targetYear}
+
+أعد النتيجة كمصفوفة JSON لكل موظف يحتوي:
+- name: اسم الموظف
+- days: كائن حيث المفتاح هو رقم اليوم (1-31) والقيمة هي الشفتات (مثل "A" أو "AB" أو "OFF" أو "")`
+      };
+
+      const response = await callGeminiWithRetryAndFallback(
+        ai,
+        imagePart,
+        promptPart,
+        {
+          type: Type.OBJECT,
+          properties: {
+            employees: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "اسم الموظف" },
+                  days: {
+                    type: Type.OBJECT,
+                    description: "مفتاح = رقم اليوم، قيمة = الشفتات"
+                  }
+                },
+                required: ["name", "days"]
+              }
+            }
+          },
+          required: ["employees"]
+        }
+      );
+
+      let extractedText = response.text || '{"employees":[]}';
+      extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      const result = JSON.parse(extractedText.trim());
+      return res.json(result);
+
+    } catch (error: any) {
+      console.error("Schedule OCR Error:", error);
+      return res.status(500).json({
+        error: error.message || "حدث خطأ أثناء قراءة صورة الجدول."
+      });
+    }
+  });
+
   // Vite development integration or static files serving
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
