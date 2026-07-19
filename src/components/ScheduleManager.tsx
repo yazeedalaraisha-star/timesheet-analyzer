@@ -142,6 +142,13 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
   };
 
+  const handleDeleteAll = () => {
+    if (window.confirm(`هل أنت متأكد من مسح جميع موظفي قسم "${selectedDept}"؟`)) {
+      const kept = schedules.filter((s) => (s.department || "بدون قسم") !== selectedDept);
+      onUpdate(kept);
+    }
+  };
+
   const handleCellClick = (empId: string, dayIdx: number) => {
     if (editingCell?.empId === empId && editingCell.dayIdx === dayIdx) {
       setEditingCell(null);
@@ -845,6 +852,11 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
             <Calendar className="h-4 w-4 text-slate-400" />
             {selectedDept} — {monthLabel} ({filteredDeptSchedules.length} موظف)
           </h3>
+          {deptSchedules.filter((s) => s.employeeName !== "—").length > 0 && (
+            <button onClick={handleDeleteAll} className="text-[10px] text-red-400 hover:text-red-600 font-bold transition-all">
+              مسح كل الموظفين
+            </button>
+          )}
         </div>
 
         {filteredDeptSchedules.length === 0 ? (

@@ -550,54 +550,72 @@ async function startServer() {
       const targetYear = year || new Date().getFullYear();
 
       const promptPart = {
-        text: `أنت خبير استخراج بيانات من جداول الدوام. قم بقراءة الصورة واستخراج جدول الدوام الشهري.
+        text: `أنت خبير استخراج بيانات من جداول الدوام الشهرية. قم بقراءة الصورة بدقة.
+
+الشهر المطلوب: ${targetMonth}/${targetYear}
 
 التعليمات:
-1. اقرأ جميع أسماء الموظفين من الجدول.
-2. لكل موظف، اقرأ الشفتات/الأيام المتاحة في الشهر.
-3. الشفتات قد تكون مكتوبة كأحرف: A, B, C أو أرقام أو أسماء.
+1. اقرأ جميع أسماء الموظفين من أول عمود بالجدول.
+2. كل عمود يمثل يوماً من الشهر (1 إلى 31).
+3. في كل خلية، اقرأ الشفتات: A أو B أو C أو مزيج منها (مثل AB).
 4. A = نهاري (06-14)، B = مسائي (14-22)، C = ليلي (22-06).
-5. إذا كان اليوم مكتوب فيه "إجازة" أو "OFF" أو "ع" اعتبره يوم إجازة.
-6. الأرقام العربية (٠١٢٣٤٥٦٧٨٩) حوّلها لأرقام لاتينية.
-7. إذا وجدت أكثر من شفت بنفس اليوم، اذكرها جميعاً (مثلاً A+B).
-8. الشهر المطلوب: ${targetMonth}/${targetYear}
+5. إذا كان اليوم مكتوب فيه "إجازة" أو "OFF" أو "ع" اعتبره OFF.
+6. الأرقام العربية حوّلها لأرقام لاتينية.
+7. إذا كانت الخلية فارغة، اكتب "".
+8. لا تتخمن — إذا ما قريت الخلية اكتب "".
 
-أعد النتيجة كمصفوفة JSON لكل موظف يحتوي:
-- name: اسم الموظف
-- days: كائن حيث المفتاح هو رقم اليوم (1-31) والقيمة هي الشفتات (مثل "A" أو "AB" أو "OFF" أو "")`
+أعطني النتيجة فقط كمصفوفة JSON بدون أي نص إضافي:
+{"employees":[{"name":"اسم الموظف","days":{"1":"A","2":"B","3":"OFF","4":"AB","5":"C",...}}]}
+
+days: المفتاح رقم اليوم (1-31)، القيمة الشفتات. فقط الأيام اللي فيها بيانات.`
       };
 
-      const response = await callGeminiWithRetryAndFallback(
-        ai,
-        imagePart,
-        promptPart,
-        {
-          type: Type.OBJECT,
-          properties: {
-            employees: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING, description: "اسم الموظف" },
-                  days: {
-                    type: Type.OBJECT,
-                    description: "مفتاح = رقم اليوم، قيمة = الشفتات"
-                  }
-                },
-                required: ["name", "days"]
-              }
+      const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+      let lastError: any = null;
+      let result: any = null;
+
+      for (const model of modelsToTry) {
+        let attempts = 3;
+        let delay = 1500;
+        while (attempts > 0) {
+          try {
+            console.log(`[Schedule OCR] Trying model: ${model} (attempts: ${attempts})`);
+            const response = await ai.models.generateContent({
+              model,
+              contents: { parts: [imagePart, promptPart] },
+              config: { temperature: 0.1 },
+            });
+            let text = (response.text || "").trim();
+            text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+            const jsonMatch = text.match(/\{[\s\S]*"employees"[\s\S]*\}/);
+            if (jsonMatch) {
+              result = JSON.parse(jsonMatch[0]);
+              break;
             }
-          },
-          required: ["employees"]
+            result = JSON.parse(text);
+            break;
+          } catch (err: any) {
+            lastError = err;
+            console.error(`[Schedule OCR] ${model} failed:`, err.message);
+            const msg = String(err.message || "").toLowerCase();
+            const isTransient = msg.includes("503") || msg.includes("429") || msg.includes("unavailable") || msg.includes("overloaded");
+            if (isTransient && attempts > 1) {
+              await new Promise((r) => setTimeout(r, delay));
+              delay *= 2;
+              attempts--;
+            } else {
+              break;
+            }
+          }
         }
-      );
+        if (result) break;
+      }
 
-      let extractedText = response.text || '{"employees":[]}';
-      extractedText = extractedText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-      const result = JSON.parse(extractedText.trim());
+      if (!result) {
+        throw lastError || new Error("فشل تحليل الصورة. حاول مرة أخرى.");
+      }
+
       return res.json(result);
-
     } catch (error: any) {
       console.error("Schedule OCR Error:", error);
       return res.status(500).json({
