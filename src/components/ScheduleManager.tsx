@@ -15,10 +15,11 @@ import {
   Download,
   Camera,
   Loader2,
+  Settings,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
-import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, SHIFT_DEFINITIONS, ARABIC_DAYS } from "../types";
+import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, DEFAULT_SHIFT_DEFINITIONS, ARABIC_DAYS, Shift } from "../types";
 import { analyzeScheduleImage } from "../apiClient";
 
 interface Props {
@@ -66,6 +67,13 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const [editingCell, setEditingCell] = useState<{ empId: string; dayIdx: number } | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState("");
+  const [showShiftSettings, setShowShiftSettings] = useState(false);
+  const [shiftDefs, setShiftDefs] = useState<Record<string, Shift>>(() => {
+    try {
+      const stored = localStorage.getItem("schedule_shift_definitions");
+      return stored ? JSON.parse(stored) : { ...DEFAULT_SHIFT_DEFINITIONS };
+    } catch { return { ...DEFAULT_SHIFT_DEFINITIONS }; }
+  });
   const gridRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +115,18 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     const existing = new Map(emp.days.map((d) => [d.date, d]));
     return monthDays.map((md) => existing.get(md.date) || { ...md, shifts: [], isOff: md.isOff });
   }, [monthDays]);
+
+  const handleSaveShiftDef = (name: string, field: "startTime" | "endTime", value: string) => {
+    const updated = { ...shiftDefs, [name]: { ...shiftDefs[name], [field]: value } };
+    setShiftDefs(updated);
+    try { localStorage.setItem("schedule_shift_definitions", JSON.stringify(updated)); } catch {}
+  };
+
+  const handleResetShifts = () => {
+    const defs = { ...DEFAULT_SHIFT_DEFINITIONS };
+    setShiftDefs(defs);
+    try { localStorage.setItem("schedule_shift_definitions", JSON.stringify(defs)); } catch {}
+  };
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear((y) => y - 1); }
@@ -723,11 +743,56 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           </span>
           {SHIFT_NAMES.map((s) => (
             <span key={s} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${SHIFT_COLORS[s]}`}>
-              {s}: {SHIFT_DEFINITIONS[s].startTime}-{SHIFT_DEFINITIONS[s].endTime}
+              {s}: {shiftDefs[s].startTime}-{shiftDefs[s].endTime}
             </span>
           ))}
+          <button
+            onClick={() => setShowShiftSettings(!showShiftSettings)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg transition-all"
+            title="إعدادات الشفتات"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
+
+      {/* Shift Settings Panel */}
+      {showShiftSettings && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-4">
+          <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-3">
+            <Settings className="h-4 w-4 text-slate-400" />
+            إعدادات أوقات الشفتات
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {SHIFT_NAMES.map((s) => (
+              <div key={s} className="flex items-center gap-2">
+                <span className={`text-xs font-black px-2 py-1 rounded-lg border ${SHIFT_COLORS[s]} min-w-[28px] text-center`}>{s}</span>
+                <input
+                  type="time"
+                  value={shiftDefs[s].startTime}
+                  onChange={(e) => handleSaveShiftDef(s, "startTime", e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium"
+                />
+                <span className="text-slate-400 text-xs">←</span>
+                <input
+                  type="time"
+                  value={shiftDefs[s].endTime}
+                  onChange={(e) => handleSaveShiftDef(s, "endTime", e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-medium"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button onClick={handleResetShifts} className="text-[10px] text-slate-400 hover:text-red-500 font-bold transition-all">
+              إعادة تعيين
+            </button>
+            <button onClick={() => setShowShiftSettings(false)} className="text-[10px] text-slate-400 hover:text-slate-600 font-bold transition-all mr-auto">
+              إخفاء
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-2">

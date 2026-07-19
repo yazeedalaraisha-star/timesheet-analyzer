@@ -123,7 +123,7 @@ export interface Shift {
   endTime: string;
 }
 
-export const SHIFT_DEFINITIONS: Record<string, Shift> = {
+export const DEFAULT_SHIFT_DEFINITIONS: Record<string, Shift> = {
   A: { name: "A", startTime: "06:00", endTime: "14:00" },
   B: { name: "B", startTime: "14:00", endTime: "22:00" },
   C: { name: "C", startTime: "22:00", endTime: "06:00" },
