@@ -117,10 +117,29 @@ export interface OvertimeEntry {
   reason?: string;
 }
 
-export interface DaySchedule {
-  day: string;
+export interface Shift {
+  name: string;
   startTime: string;
   endTime: string;
+}
+
+export const SHIFT_DEFINITIONS: Record<string, Shift> = {
+  A: { name: "A", startTime: "06:00", endTime: "14:00" },
+  B: { name: "B", startTime: "14:00", endTime: "22:00" },
+  C: { name: "C", startTime: "22:00", endTime: "06:00" },
+};
+
+export const SHIFT_NAMES = ["A", "B", "C"];
+export const SHIFT_COLORS: Record<string, string> = {
+  A: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",
+  B: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
+  C: "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800",
+};
+
+export interface DaySchedule {
+  date: string;
+  dayName: string;
+  shifts: string[];
   isOff: boolean;
 }
 
@@ -128,7 +147,7 @@ export interface EmployeeSchedule {
   id: string;
   employeeName: string;
   department: string;
-  schedule: DaySchedule[];
+  days: DaySchedule[];
 }
 
 export interface ScheduleViolation {
@@ -141,3 +160,10 @@ export interface ScheduleViolation {
   delayMinutes?: number;
   details: string;
 }
+
+export const MONTH_NAMES = [
+  "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+];
+
+export const ARABIC_DAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];

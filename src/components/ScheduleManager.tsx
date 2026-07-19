@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useCallback } from "react";
 import {
   Calendar,
   Upload,
@@ -7,43 +7,62 @@ import {
   Search,
   Users,
   Building2,
-  Edit3,
-  Check,
-  X,
   Clock,
   AlertCircle,
   Download,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
   FileDown,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { EmployeeSchedule, DaySchedule } from "../types";
+import html2canvas from "html2canvas";
+import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, SHIFT_DEFINITIONS, ARABIC_DAYS } from "../types";
 
 interface Props {
   schedules: EmployeeSchedule[];
   onUpdate: (schedules: EmployeeSchedule[]) => void;
 }
 
-const ARABIC_DAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
 
-function createDefaultSchedule(): DaySchedule[] {
-  return ARABIC_DAYS.map((day) => ({
-    day,
-    startTime: "08:00",
-    endTime: "17:00",
-    isOff: day === "الجمعة" || day === "السبت",
-  }));
+function generateMonthDays(year: number, month: number): DaySchedule[] {
+  const daysInMonth = getDaysInMonth(year, month);
+  const days: DaySchedule[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const dayName = ARABIC_DAYS[date.getDay()];
+    days.push({ date: dateStr, dayName, shifts: [], isOff: dayName === "الجمعة" || dayName === "السبت" });
+  }
+  return days;
 }
 
 export default function ScheduleManager({ schedules, onUpdate }: Props) {
-  const csvInputRef = useRef<HTMLInputElement>(null);
+  const now = new Date();
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
   const [searchQuery, setSearchQuery] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
+  const [editingCell, setEditingCell] = useState<{ empId: string; dayIdx: number } | null>(null);
+  const [selectedShift, setSelectedShift] = useState<string>("A");
+  const gridRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [newName, setNewName] = useState("");
   const [newDept, setNewDept] = useState("");
-  const [newSchedule, setNewSchedule] = useState<DaySchedule[]>(createDefaultSchedule());
+
+  const monthLabel = useMemo(() => {
+    const months = [
+      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+    ];
+    return `${months[currentMonth]} ${currentYear}`;
+  }, [currentYear, currentMonth]);
+
+  const monthDays = useMemo(() => generateMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
 
   const departments = useMemo(() => {
     const depts = new Set(schedules.map((s) => s.department).filter(Boolean));
@@ -53,8 +72,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const filteredSchedules = useMemo(() => {
     let result = schedules;
     if (searchQuery.trim()) {
-      const q = searchQuery.trim();
-      result = result.filter((s) => s.employeeName.includes(q));
+      result = result.filter((s) => s.employeeName.includes(searchQuery.trim()));
     }
     if (filterDept) {
       result = result.filter((s) => s.department === filterDept);
@@ -63,107 +81,59 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   }, [schedules, searchQuery, filterDept]);
 
   const perDeptSummary = useMemo(() => {
-    const map = new Map<string, { employees: number; activeDays: number }>();
+    const map = new Map<string, number>();
     for (const s of schedules) {
-      const dept = s.department || "بدون قسم";
-      const existing = map.get(dept) || { employees: 0, activeDays: 0 };
-      existing.employees += 1;
-      existing.activeDays += s.schedule.filter((d) => !d.isOff).length;
-      map.set(dept, existing);
+      map.set(s.department || "بدون قسم", (map.get(s.department || "بدون قسم") || 0) + 1);
     }
-    return Array.from(map.entries()).sort((a, b) => b[1].employees - a[1].employees);
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [schedules]);
 
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const ensureMonthDays = useCallback((emp: EmployeeSchedule): DaySchedule[] => {
+    const existing = new Map(emp.days.map((d) => [d.date, d]));
+    return monthDays.map((md) => existing.get(md.date) || { ...md, shifts: [], isOff: md.isOff });
+  }, [monthDays]);
 
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext === "xlsx" || ext === "xls") {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const csv = XLSX.utils.sheet_to_csv(sheet);
-        parseCSVAndImport(csv);
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        let text = ev.target?.result as string;
-        if (!text) return;
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        const decoded = decodeArabicText(text);
-        parseCSVAndImport(decoded);
-      };
-      reader.readAsText(file, "UTF-8");
-    }
-    e.target.value = "";
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear((y) => y - 1); }
+    else setCurrentMonth((m) => m - 1);
   };
 
-  const decodeArabicText = (text: string): string => {
-    if (/[أ-ي٠-٩]/.test(text)) return text;
-    try {
-      const bytes = new Uint8Array(text.length);
-      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xFF;
-      const decoded = new TextDecoder("windows-1256").decode(bytes);
-      if (/[أ-ي]/.test(decoded)) return decoded;
-    } catch {}
-    return text;
+  const handleNextMonth = () => {
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear((y) => y + 1); }
+    else setCurrentMonth((m) => m + 1);
   };
 
-  const parseCSVAndImport = (text: string) => {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    if (lines.length < 2) {
-      alert("الملف فارغ");
+  const handleCellClick = (empId: string, dayIdx: number) => {
+    if (editingCell?.empId === empId && editingCell.dayIdx === dayIdx) {
+      setEditingCell(null);
       return;
     }
+    setEditingCell({ empId, dayIdx });
+  };
 
-    const delimiter = lines[0].includes(";") ? ";" : ",";
-    const header = lines[0].toLowerCase().replace(/["\s]/g, "");
-
-    const map = new Map<string, { dept: string; schedule: DaySchedule[] }>();
-    const errors: string[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
-      if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية (وجد ${cols.length})`); continue; }
-      const [empName, dept, day, start, end, off] = cols;
-      if (!empName || !day) { errors.push(`سطر ${i + 1}: بيانات ناقصة`); continue; }
-
-      const existing = map.get(empName) || { dept: dept || "", schedule: [] };
-      if (dept && !existing.dept) existing.dept = dept;
-      existing.schedule.push({
-        day,
-        startTime: start || "08:00",
-        endTime: end || "17:00",
-        isOff: off === "نعم" || off === "إجازة" || off === "true" || off === "1",
-      });
-      map.set(empName, existing);
-    }
-
-    const newSchedules: EmployeeSchedule[] = [];
-    for (const [name, data] of map) {
-      if (data.schedule.length === 0) continue;
-      newSchedules.push({
-        id: "sch_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-        employeeName: name,
-        department: data.dept,
-        schedule: data.schedule,
-      });
-    }
-
-    if (newSchedules.length > 0) {
-      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم للجدول؟`)) {
-        onUpdate([...schedules, ...newSchedules]);
+  const handleToggleShift = (empId: string, dayIdx: number, shiftName: string) => {
+    const updated = schedules.map((emp) => {
+      if (emp.id !== empId) return emp;
+      const days = ensureMonthDays(emp);
+      const day = { ...days[dayIdx] };
+      if (shiftName === "OFF") {
+        day.isOff = !day.isOff;
+        day.shifts = day.isOff ? [] : day.shifts;
+      } else if (shiftName === "CLEAR") {
+        day.isOff = false;
+        day.shifts = [];
+      } else {
+        day.isOff = false;
+        if (day.shifts.includes(shiftName)) {
+          day.shifts = day.shifts.filter((s) => s !== shiftName);
+        } else {
+          day.shifts = [...day.shifts, shiftName].sort();
+        }
       }
-    }
-    if (errors.length > 0) {
-      alert("أخطاء:\n" + errors.slice(0, 10).join("\n"));
-    }
+      days[dayIdx] = day;
+      return { ...emp, days };
+    });
+    onUpdate(updated);
   };
 
   const handleAddEmployee = () => {
@@ -172,176 +142,411 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       id: "sch_" + Date.now(),
       employeeName: newName.trim(),
       department: newDept.trim(),
-      schedule: [...newSchedule],
+      days: generateMonthDays(currentYear, currentMonth),
     };
     onUpdate([entry, ...schedules]);
     setNewName("");
     setNewDept("");
-    setNewSchedule(createDefaultSchedule());
     setShowAddForm(false);
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm("هل أنت متأكد من حذف هذا الموظف من الجدول؟")) {
+    if (window.confirm("هل أنت متأكد من حذف هذا الموظف؟")) {
       onUpdate(schedules.filter((s) => s.id !== id));
     }
   };
 
-  const handleDeleteDept = (dept: string) => {
-    if (window.confirm(`هل أنت متأكد من حذف جميع موظفي قسم "${dept}"؟`)) {
-      onUpdate(schedules.filter((s) => s.department !== dept));
+  const handleDeleteAll = () => {
+    if (window.confirm("هل أنت متأكد من حذف جميع الموظفين من الجدول؟")) {
+      onUpdate([]);
     }
   };
 
-  const handleUpdateDay = (empId: string, dayIndex: number, field: keyof DaySchedule, value: any) => {
-    const updated = schedules.map((s) => {
-      if (s.id !== empId) return s;
-      const newSchedule = [...s.schedule];
-      newSchedule[dayIndex] = { ...newSchedule[dayIndex], [field]: value };
-      return { ...s, schedule: newSchedule };
-    });
-    onUpdate(updated);
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { header: 1 });
+        parseExcelData(jsonData);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        let text = ev.target?.result as string;
+        if (!text) return;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        parseCSVAndImport(text);
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+    e.target.value = "";
   };
 
-  const handleExportCSV = () => {
-    const headers = ["الموظف", "القسم", "اليوم", "وقت الدخول", "وقت الخروج", "إجازة"];
-    const rows: string[][] = [];
-    for (const s of filteredSchedules) {
-      for (const d of s.schedule) {
-        rows.push([s.employeeName, s.department, d.day, d.startTime, d.endTime, d.isOff ? "نعم" : "لا"]);
+  const parseExcelData = (rows: Record<string, any>[]) => {
+    if (rows.length < 2) { alert("الملف فارغ"); return; }
+
+    const headerRow = rows[0].map(String).map((h) => h?.trim() || "");
+    const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name/i.test(h));
+    const deptIdx = headerRow.findIndex((h) => /القسم|dept/i.test(h));
+
+    const dateHeaders: { idx: number; dateStr: string }[] = [];
+    for (let i = 0; i < headerRow.length; i++) {
+      const h = headerRow[i];
+      if (nameIdx === i || deptIdx === i) continue;
+      const m = h.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-]?(\d{2,4})?/);
+      if (m) {
+        const day = parseInt(m[1]);
+        const month = parseInt(m[2]) - 1;
+        const year = m[3] ? (m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3])) : currentYear;
+        const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        dateHeaders.push({ idx: i, dateStr: ds });
       }
     }
-    const csv = [headers.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\r\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `جدول_الدوام_${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    if (dateHeaders.length === 0) {
+      const inferred = generateMonthDays(currentYear, currentMonth);
+      dateHeaders.push(...inferred.map((d, i) => ({ idx: i + 2, dateStr: d.date })));
+    }
+
+    const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
+    const errors: string[] = [];
+
+    for (let r = 1; r < rows.length; r++) {
+      const cols = rows[r];
+      const empName = String(cols[nameIdx] || "").trim();
+      if (!empName) continue;
+      const dept = deptIdx >= 0 ? String(cols[deptIdx] || "").trim() : "";
+
+      const entry = map.get(empName) || { dept, days: new Map<string, DaySchedule>() };
+      if (dept && !entry.dept) entry.dept = dept;
+
+      for (const dh of dateHeaders) {
+        const cellVal = String(cols[dh.idx] || "").trim().toUpperCase();
+        if (!cellVal) continue;
+
+        const existing = entry.days.get(dh.dateStr) || {
+          date: dh.dateStr,
+          dayName: ARABIC_DAYS[new Date(dh.dateStr).getDay()],
+          shifts: [] as string[],
+          isOff: false,
+        };
+
+        if (cellVal === "OFF" || cellVal === "إجازة" || cellVal === "ع" || cellVal === "ح") {
+          existing.isOff = true;
+          existing.shifts = [];
+        } else {
+          existing.isOff = false;
+          const shiftChars = cellVal.replace(/[^A-C]/g, "").split("").filter(Boolean);
+          existing.shifts = [...new Set([...existing.shifts, ...shiftChars])].sort();
+        }
+
+        entry.days.set(dh.dateStr, existing);
+      }
+
+      map.set(empName, entry);
+    }
+
+    const newSchedules: EmployeeSchedule[] = [];
+    for (const [name, data] of map) {
+      const daysArray = monthDays.map((md) => data.days.get(md.date) || { ...md, shifts: [], isOff: md.isOff });
+      if (daysArray.length === 0) continue;
+      newSchedules.push({
+        id: "sch_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        employeeName: name,
+        department: data.dept,
+        days: daysArray,
+      });
+    }
+
+    if (newSchedules.length > 0) {
+      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم للجدول؟`)) {
+        onUpdate([...schedules, ...newSchedules]);
+      }
+    } else {
+      alert("لم يتم العثور على بيانات صالحة");
+    }
   };
 
+  const parseCSVAndImport = (text: string) => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) { alert("الملف فارغ"); return; }
+
+    const delimiter = lines[0].includes(";") ? ";" : ",";
+    const header = lines[0].split(delimiter).map((h) => h.replace(/^"|"$/g, "").trim());
+
+    const nameIdx = header.findIndex((h) => /الموظف|الاسم|name/i.test(h));
+    const deptIdx = header.findIndex((h) => /القسم|dept/i.test(h));
+
+    const dateHeaders: { idx: number; dateStr: string }[] = [];
+    for (let i = 0; i < header.length; i++) {
+      if (i === nameIdx || i === deptIdx) continue;
+      const m = header[i].match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-]?(\d{2,4})?/);
+      if (m) {
+        const day = parseInt(m[1]);
+        const month = parseInt(m[2]) - 1;
+        const year = m[3] ? (m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3])) : currentYear;
+        dateHeaders.push({ idx: i, dateStr: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` });
+      }
+    }
+
+    const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
+      const empName = cols[nameIdx >= 0 ? nameIdx : 0];
+      if (!empName) continue;
+      const dept = deptIdx >= 0 ? cols[deptIdx] : "";
+
+      const entry = map.get(empName) || { dept, days: new Map<string, DaySchedule>() };
+      if (dept && !entry.dept) entry.dept = dept;
+
+      for (const dh of dateHeaders) {
+        const cellVal = (cols[dh.idx] || "").trim().toUpperCase();
+        if (!cellVal) continue;
+        const existing = entry.days.get(dh.dateStr) || {
+          date: dh.dateStr,
+          dayName: ARABIC_DAYS[new Date(dh.dateStr).getDay()],
+          shifts: [] as string[],
+          isOff: false,
+        };
+        if (cellVal === "OFF" || cellVal === "إجازة" || cellVal === "ح" || cellVal === "ع") {
+          existing.isOff = true;
+          existing.shifts = [];
+        } else {
+          existing.isOff = false;
+          const shiftChars = cellVal.replace(/[^A-C]/g, "").split("").filter(Boolean);
+          existing.shifts = [...new Set([...existing.shifts, ...shiftChars])].sort();
+        }
+        entry.days.set(dh.dateStr, existing);
+      }
+      map.set(empName, entry);
+    }
+
+    const newSchedules: EmployeeSchedule[] = [];
+    for (const [name, data] of map) {
+      const daysArray = monthDays.map((md) => data.days.get(md.date) || { ...md, shifts: [], isOff: md.isOff });
+      newSchedules.push({
+        id: "sch_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        employeeName: name,
+        department: data.dept,
+        days: daysArray,
+      });
+    }
+
+    if (newSchedules.length > 0) {
+      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم؟`)) {
+        onUpdate([...schedules, ...newSchedules]);
+      }
+    }
+  };
+
+  const handleExportExcel = () => {
+    const headerRow: any[] = ["الموظف", "القسم"];
+    monthDays.forEach((d) => { headerRow.push(`${new Date(d.date).getDate()}`); });
+
+    const data: any[][] = [];
+    for (const emp of filteredSchedules) {
+      const days = ensureMonthDays(emp);
+      const row: any[] = [emp.employeeName, emp.department || ""];
+      days.forEach((d) => {
+        if (d.isOff) row.push("OFF");
+        else if (d.shifts.length > 0) row.push(d.shifts.join(""));
+        else row.push("");
+      });
+      data.push(row);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headerRow, ...data]);
+    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, ...monthDays.map(() => ({ wch: 6 }))];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "جدول الدوام");
+    XLSX.writeFile(wb, `جدول_الدوام_${monthLabel}.xlsx`);
+  };
+
+  const handleExportImage = async () => {
+    if (!gridRef.current) return;
+    const btn = document.getElementById("export-img-btn");
+    if (btn) btn.textContent = "جاري التصدير...";
+    try {
+      const canvas = await html2canvas(gridRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        logging: false,
+        useCORS: true,
+      });
+      const link = document.createElement("a");
+      link.download = `جدول_الدوام_${monthLabel}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch {
+      alert("حدث خطأ أثناء التصدير كصورة");
+    }
+    if (btn) btn.textContent = "صورة PNG";
+  };
+
+  const handleExportPDF = async () => {
+    if (!gridRef.current) return;
+    const btn = document.getElementById("export-pdf-btn");
+    if (btn) btn.textContent = "جاري التصدير...";
+    try {
+      const canvas = await html2canvas(gridRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        logging: false,
+        useCORS: true,
+      });
+      const { default: jsPDF } = await import("jspdf");
+      const imgData = canvas.toDataURL("image/png");
+      const pdfWidth = canvas.width;
+      const pdfHeight = canvas.height;
+      const pdf = new jsPDF({
+        orientation: pdfWidth > pdfHeight ? "l" : "p",
+        unit: "px",
+        format: [pdfWidth, pdfHeight],
+      });
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`جدول_الدوام_${monthLabel}.pdf`);
+    } catch {
+      alert("حدث خطأ أثناء التصدير كـ PDF");
+    }
+    if (btn) btn.textContent = "PDF";
+  };
+
+  const dayNameShort = (dayName: string) => {
+    const map: Record<string, string> = { "الأحد": "أح", "الإثنين": "إث", "الثلاثاء": "ثل", "الأربعاء": "أرب", "الخميس": "خم", "الجمعة": "جم", "السبت": "سب" };
+    return map[dayName] || dayName.charAt(0);
+  };
+
+  const isWeekend = (d: DaySchedule) => d.dayName === "الجمعة" || d.dayName === "السبت";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-        <div className="p-6">
+        <div className="p-5">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
               <Calendar className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-800 dark:text-white">جدول الدوام الرسمي</h2>
+              <h2 className="text-lg font-black text-slate-800 dark:text-white">جدول الدوام الشهري</h2>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                إدارة جداول عمل الموظفين — يُستخدم للمقارنة التلقائية مع البصمة
+                الشフトات: A (06-14) / B (14-22) / C (22-06) — كل شفت 8 ساعات
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الموظفين</span>
-              <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-slate-700 dark:text-white">{schedules.length}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">شخص</span>
-              </div>
-            </div>
-            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
-              <Users className="h-4 w-4" />
-            </div>
-          </div>
+      {/* Summary + Month Nav */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button onClick={handlePrevMonth} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+            <ChevronRight className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          </button>
+          <span className="text-sm font-black text-slate-700 dark:text-white min-w-[140px] text-center">{monthLabel}</span>
+          <button onClick={handleNextMonth} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+            <ChevronLeft className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          </button>
         </div>
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الأقسام</span>
-              <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-slate-700 dark:text-white">{departments.length}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">قسم</span>
-              </div>
-            </div>
-            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
-              <Building2 className="h-4 w-4" />
-            </div>
-          </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {SHIFT_NAMES.map((s) => (
+            <span key={s} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${SHIFT_COLORS[s]}`}>
+              {s}: {SHIFT_DEFINITIONS[s].startTime}-{SHIFT_DEFINITIONS[s].endTime}
+            </span>
+          ))}
         </div>
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">أيام العمل</span>
-              <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-3xl font-black text-slate-700 dark:text-white">
-                  {schedules.reduce((sum, s) => sum + s.schedule.filter((d) => !d.isOff).length, 0)}
-                </span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">يوم/أسبوع</span>
-              </div>
-            </div>
-            <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
-              <Clock className="h-4 w-4" />
-            </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
+            <Users className="h-3.5 w-3.5 text-slate-400" />
+            <span className="font-bold text-slate-600 dark:text-slate-300">{schedules.length}</span>
+            <span className="text-slate-400">موظف</span>
           </div>
+          {perDeptSummary.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
+              <Building2 className="h-3.5 w-3.5 text-slate-400" />
+              <span className="font-bold text-slate-600 dark:text-slate-300">{perDeptSummary.length}</span>
+              <span className="text-slate-400">قسم</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Department Summary */}
+      {/* Department badges */}
       {perDeptSummary.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5">
-          <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-3">
-            <Building2 className="h-4 w-4 text-slate-400" />
-            <span>الأقسام</span>
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {perDeptSummary.map(([dept, data]) => (
-              <div
-                key={dept}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                  filterDept === dept
-                    ? "bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-800 dark:border-slate-200"
-                    : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                }`}
-                onClick={() => setFilterDept(filterDept === dept ? "" : dept)}
-              >
-                {dept}
-                <span className="text-[10px] opacity-60">{data.employees}</span>
-              </div>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          {perDeptSummary.map(([dept, count]) => (
+            <button
+              key={dept}
+              onClick={() => setFilterDept(filterDept === dept ? "" : dept)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                filterDept === dept
+                  ? "bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-800 dark:border-slate-200"
+                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              }`}
+            >
+              {dept}
+              <span className="text-[10px] opacity-60">{count}</span>
+            </button>
+          ))}
         </div>
       )}
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <input ref={csvInputRef} type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden" onChange={handleFileImport} />
+        <input ref={fileInputRef} type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden" onChange={handleFileImport} />
         <button
-          onClick={() => csvInputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-xs font-bold rounded-xl transition-all"
         >
           <Upload className="h-3.5 w-3.5" />
-          استيراد CSV / Excel
+          رفع ملف
         </button>
         <button
-          onClick={() => { setShowAddForm(!showAddForm); setEditingId(null); }}
+          onClick={() => setShowAddForm(!showAddForm)}
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all"
         >
           <Plus className="h-3.5 w-3.5" />
           إضافة موظف
         </button>
         {filteredSchedules.length > 0 && (
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all"
-          >
-            <FileDown className="h-3.5 w-3.5" />
-            تصدير CSV
-          </button>
+          <>
+            <button
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              Excel
+            </button>
+            <button
+              id="export-pdf-btn"
+              onClick={handleExportPDF}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all"
+            >
+              <Download className="h-3.5 w-3.5" />
+              PDF
+            </button>
+            <button
+              id="export-img-btn"
+              onClick={handleExportImage}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all"
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              صورة PNG
+            </button>
+          </>
         )}
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <input
             type="text"
@@ -353,14 +558,47 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         </div>
       </div>
 
+      {/* Shift picker for editing */}
+      {editingCell && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">اختر الشفت:</span>
+          {SHIFT_NAMES.map((s) => (
+            <button
+              key={s}
+              onClick={() => { setSelectedShift(s); handleToggleShift(editingCell.empId, editingCell.dayIdx, s); }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                SHIFT_COLORS[s]
+              } hover:scale-105 active:scale-95`}
+            >
+              {s}
+            </button>
+          ))}
+          <button
+            onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "OFF")}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
+          >
+            إجازة
+          </button>
+          <button
+            onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "CLEAR")}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 hover:scale-105 active:scale-95 transition-all"
+          >
+            مسح
+          </button>
+          <button onClick={() => setEditingCell(null)} className="mr-auto p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-all">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Add Employee Form */}
       {showAddForm && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
-          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
-            <Plus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            إضافة موظف جديد للجدول
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-4">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-3">
+            <Plus className="h-4 w-4 text-emerald-600" />
+            إضافة موظف جديد — {monthLabel}
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">اسم الموظف</label>
               <input
@@ -378,142 +616,113 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                 value={newDept}
                 onChange={(e) => setNewDept(e.target.value)}
                 placeholder="مثال: المحاسبة"
-                list="dept-list"
+                list="dept-list-schedule"
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
               />
-              <datalist id="dept-list">
+              <datalist id="dept-list-schedule">
                 {departments.map((d) => <option key={d} value={d} />)}
               </datalist>
             </div>
-          </div>
-
-          {/* Day Schedule Grid */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                  <th className="py-2 px-2">اليوم</th>
-                  <th className="py-2 px-2">من</th>
-                  <th className="py-2 px-2">إلى</th>
-                  <th className="py-2 px-2">إجازة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                {newSchedule.map((day, idx) => (
-                  <tr key={day.day} className={day.isOff ? "opacity-50" : ""}>
-                    <td className="py-2 px-2 font-bold text-slate-700 dark:text-slate-200">{day.day}</td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="time"
-                        value={day.startTime}
-                        onChange={(e) => {
-                          const s = [...newSchedule];
-                          s[idx] = { ...s[idx], startTime: e.target.value };
-                          setNewSchedule(s);
-                        }}
-                        disabled={day.isOff}
-                        className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium disabled:opacity-40"
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="time"
-                        value={day.endTime}
-                        onChange={(e) => {
-                          const s = [...newSchedule];
-                          s[idx] = { ...s[idx], endTime: e.target.value };
-                          setNewSchedule(s);
-                        }}
-                        disabled={day.isOff}
-                        className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium disabled:opacity-40"
-                      />
-                    </td>
-                    <td className="py-2 px-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={day.isOff}
-                        onChange={(e) => {
-                          const s = [...newSchedule];
-                          s[idx] = { ...s[idx], isOff: e.target.checked };
-                          setNewSchedule(s);
-                        }}
-                        className="rounded"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
-              إلغاء
-            </button>
-            <button onClick={handleAddEmployee} disabled={!newName.trim()} className={`px-4 py-2 text-white text-sm font-bold rounded-xl transition-all ${!newName.trim() ? "opacity-50 cursor-not-allowed bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}>
-              حفظ الموظف
-            </button>
+            <div className="flex items-end gap-2">
+              <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
+                إلغاء
+              </button>
+              <button onClick={handleAddEmployee} disabled={!newName.trim()} className={`px-4 py-2 text-white text-sm font-bold rounded-xl transition-all ${!newName.trim() ? "opacity-50 cursor-not-allowed bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                حفظ
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Schedule Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+      {/* Monthly Grid */}
+      <div ref={gridRef} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
             <Calendar className="h-4 w-4 text-slate-400" />
-            <span>الجدول ({filteredSchedules.length}{searchQuery || filterDept ? ` من ${schedules.length}` : ""})</span>
+            {monthLabel} ({filteredSchedules.length}{searchQuery || filterDept ? ` من ${schedules.length}` : ""} موظف)
           </h3>
+          {filteredSchedules.length > 0 && (
+            <button onClick={handleDeleteAll} className="text-[10px] text-red-400 hover:text-red-600 font-bold transition-all">
+              حذف الكل
+            </button>
+          )}
         </div>
 
         {filteredSchedules.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500">
             <Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" />
             <p className="text-sm font-bold">{schedules.length === 0 ? "لا يوجد جداول دوام" : "لا توجد نتائج"}</p>
-            <p className="text-xs mt-1">{schedules.length === 0 ? "ارفع ملف CSV أو أضف موظفين يدوياً" : "جرّب تغيير الفلتر"}</p>
+            <p className="text-xs mt-1">{schedules.length === 0 ? "ارفع ملف Excel أو أضف موظفين يدوياً" : "جرّب تغيير الفلتر"}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
+            <table className="w-full text-right text-[10px] border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                  <th className="py-3 px-3">#</th>
-                  <th className="py-3 px-3">الموظف</th>
-                  <th className="py-3 px-3">القسم</th>
-                  {ARABIC_DAYS.map((d) => (
-                    <th key={d} className="py-3 px-2 text-center min-w-[100px]">{d}</th>
-                  ))}
-                  <th className="py-3 px-3 text-center">حذف</th>
+                <tr className="bg-slate-50/80 dark:bg-slate-800/30">
+                  <th className="py-2 px-2 sticky right-0 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400">#</th>
+                  <th className="py-2 px-2 sticky right-6 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400 whitespace-nowrap">الموظف</th>
+                  <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap">القسم</th>
+                  {monthDays.map((d, i) => {
+                    const dayNum = new Date(d.date).getDate();
+                    const weekend = isWeekend(d);
+                    return (
+                      <th key={i} className={`py-2 px-1 text-center min-w-[36px] ${weekend ? "bg-slate-100/80 dark:bg-slate-800/50" : ""}`}>
+                        <div className="text-[9px] text-slate-400">{dayNum}</div>
+                        <div className={`text-[8px] font-bold ${weekend ? "text-red-400" : "text-slate-500 dark:text-slate-400"}`}>{dayNameShort(d.dayName)}</div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredSchedules.map((emp, idx) => (
-                  <tr key={emp.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-all">
-                    <td className="py-3 px-3 font-bold text-slate-400">{filteredSchedules.length - idx}</td>
-                    <td className="py-3 px-3 font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{emp.employeeName}</td>
-                    <td className="py-3 px-3">
-                      <span className="inline-block px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-[10px] font-bold">
-                        {emp.department || "—"}
-                      </span>
-                    </td>
-                    {emp.schedule.map((day, di) => (
-                      <td key={day.day} className="py-3 px-2 text-center">
-                        {day.isOff ? (
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">إجازة</span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
-                            {day.startTime}-{day.endTime}
-                          </span>
-                        )}
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                {filteredSchedules.map((emp, idx) => {
+                  const days = ensureMonthDays(emp);
+                  return (
+                    <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
+                      <td className="py-1.5 px-2 sticky right-0 bg-white dark:bg-slate-900 z-10 font-bold text-slate-400">{filteredSchedules.length - idx}</td>
+                      <td className="py-1.5 px-2 sticky right-6 bg-white dark:bg-slate-900 z-10">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap text-[11px]">{emp.employeeName}</span>
+                          <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title="حذف">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </td>
-                    ))}
-                    <td className="py-3 px-3 text-center">
-                      <button onClick={() => handleDelete(emp.id)} className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all" title="حذف">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="py-1.5 px-2">
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{emp.department || "—"}</span>
+                      </td>
+                      {days.map((d, di) => {
+                        const weekend = isWeekend(d);
+                        const isActive = editingCell?.empId === emp.id && editingCell.dayIdx === di;
+                        return (
+                          <td
+                            key={di}
+                            onClick={() => handleCellClick(emp.id, di)}
+                            className={`py-1 px-1 text-center cursor-pointer transition-all ${
+                              isActive ? "bg-slate-200 dark:bg-slate-700 ring-2 ring-slate-400" :
+                              weekend ? "bg-slate-50/80 dark:bg-slate-800/30" : "hover:bg-slate-100 dark:hover:bg-slate-800/40"
+                            }`}
+                          >
+                            {d.isOff ? (
+                              <span className="text-[9px] font-bold text-red-400">OFF</span>
+                            ) : d.shifts.length > 0 ? (
+                              <div className="flex items-center justify-center gap-0.5 flex-wrap">
+                                {d.shifts.map((s) => (
+                                  <span key={s} className={`text-[9px] font-black px-1 py-0.5 rounded border ${SHIFT_COLORS[s] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
