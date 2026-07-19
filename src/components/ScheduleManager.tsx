@@ -28,16 +28,28 @@ function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
 
+function getDayNameFromDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return ARABIC_DAYS[new Date(y, m - 1, d).getDay()];
+}
+
 function generateMonthDays(year: number, month: number): DaySchedule[] {
   const daysInMonth = getDaysInMonth(year, month);
   const days: DaySchedule[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d);
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const dayName = ARABIC_DAYS[date.getDay()];
+    const dayName = getDayNameFromDate(dateStr);
     days.push({ date: dateStr, dayName, shifts: [], isOff: dayName === "الجمعة" || dayName === "السبت" });
   }
   return days;
+}
+
+function calculateTotalHours(days: DaySchedule[]): number {
+  let total = 0;
+  for (const d of days) {
+    if (!d.isOff) total += d.shifts.length * 8;
+  }
+  return total;
 }
 
 export default function ScheduleManager({ schedules, onUpdate }: Props) {
@@ -194,20 +206,48 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     if (rows.length < 2) { alert("الملف فارغ"); return; }
 
     const headerRow = rows[0].map(String).map((h) => h?.trim() || "");
-    const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name/i.test(h));
-    const deptIdx = headerRow.findIndex((h) => /القسم|dept/i.test(h));
+    const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name|employee/i.test(h));
+    const deptIdx = headerRow.findIndex((h) => /القسم|dept|department/i.test(h));
 
     const dateHeaders: { idx: number; dateStr: string }[] = [];
     for (let i = 0; i < headerRow.length; i++) {
       const h = headerRow[i];
       if (nameIdx === i || deptIdx === i) continue;
-      const m = h.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-]?(\d{2,4})?/);
-      if (m) {
-        const day = parseInt(m[1]);
-        const month = parseInt(m[2]) - 1;
-        const year = m[3] ? (m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3])) : currentYear;
-        const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        dateHeaders.push({ idx: i, dateStr: ds });
+
+      const hClean = h.replace(/[\/\-.]/g, "/").trim();
+
+      const m3 = hClean.match(/^(\d{1,2})[\/](\d{1,2})[\/](\d{2,4})$/);
+      if (m3) {
+        const day = parseInt(m3[1]);
+        const month = parseInt(m3[2]) - 1;
+        const year = m3[3].length === 2 ? 2000 + parseInt(m3[3]) : parseInt(m3[3]);
+        if (day >= 1 && day <= 31 && month >= 0 && month <= 11) {
+          dateHeaders.push({ idx: i, dateStr: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` });
+          continue;
+        }
+      }
+
+      const m2 = hClean.match(/^(\d{1,2})[\/](\d{1,2})$/);
+      if (m2) {
+        const a = parseInt(m2[1]);
+        const b = parseInt(m2[2]);
+        let day: number, month: number;
+        if (a > 12 && b >= 1 && b <= 12) { day = a; month = b; }
+        else if (b > 12 && a >= 1 && a <= 12) { month = a; day = b; }
+        else { day = a; month = b; }
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+          dateHeaders.push({ idx: i, dateStr: `${currentYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` });
+          continue;
+        }
+      }
+
+      const m1 = h.match(/^(\d{1,2})$/);
+      if (m1) {
+        const day = parseInt(m1[1]);
+        if (day >= 1 && day <= 31) {
+          dateHeaders.push({ idx: i, dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` });
+          continue;
+        }
       }
     }
 
@@ -234,7 +274,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
         const existing = entry.days.get(dh.dateStr) || {
           date: dh.dateStr,
-          dayName: ARABIC_DAYS[new Date(dh.dateStr).getDay()],
+          dayName: getDayNameFromDate(dh.dateStr),
           shifts: [] as string[],
           isOff: false,
         };
@@ -288,12 +328,32 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     const dateHeaders: { idx: number; dateStr: string }[] = [];
     for (let i = 0; i < header.length; i++) {
       if (i === nameIdx || i === deptIdx) continue;
-      const m = header[i].match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-]?(\d{2,4})?/);
-      if (m) {
-        const day = parseInt(m[1]);
-        const month = parseInt(m[2]) - 1;
-        const year = m[3] ? (m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3])) : currentYear;
-        dateHeaders.push({ idx: i, dateStr: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` });
+      const h = header[i].replace(/[\/\-.]/g, "/").trim();
+
+      const m3 = h.match(/^(\d{1,2})[\/](\d{1,2})[\/](\d{2,4})$/);
+      if (m3) {
+        const day = parseInt(m3[1]); const month = parseInt(m3[2]) - 1;
+        const year = m3[3].length === 2 ? 2000 + parseInt(m3[3]) : parseInt(m3[3]);
+        if (day >= 1 && day <= 31 && month >= 0 && month <= 11) {
+          dateHeaders.push({ idx: i, dateStr: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` }); continue;
+        }
+      }
+      const m2 = h.match(/^(\d{1,2})[\/](\d{1,2})$/);
+      if (m2) {
+        const a = parseInt(m2[1]); const b = parseInt(m2[2]);
+        let day = a, month = b;
+        if (a > 12 && b >= 1 && b <= 12) { day = a; month = b; }
+        else if (b > 12 && a >= 1 && a <= 12) { month = a; day = b; }
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+          dateHeaders.push({ idx: i, dateStr: `${currentYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` }); continue;
+        }
+      }
+      const m1 = header[i].match(/^(\d{1,2})$/);
+      if (m1) {
+        const day = parseInt(m1[1]);
+        if (day >= 1 && day <= 31) {
+          dateHeaders.push({ idx: i, dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` }); continue;
+        }
       }
     }
 
@@ -313,7 +373,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         if (!cellVal) continue;
         const existing = entry.days.get(dh.dateStr) || {
           date: dh.dateStr,
-          dayName: ARABIC_DAYS[new Date(dh.dateStr).getDay()],
+          dayName: getDayNameFromDate(dh.dateStr),
           shifts: [] as string[],
           isOff: false,
         };
@@ -350,7 +410,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
   const handleExportExcel = () => {
     const headerRow: any[] = ["الموظف", "القسم"];
-    monthDays.forEach((d) => { headerRow.push(`${new Date(d.date).getDate()}`); });
+    monthDays.forEach((d) => { headerRow.push(`${parseInt(d.date.split("-")[2])}`); });
+    headerRow.push("الساعات");
 
     const data: any[][] = [];
     for (const emp of filteredSchedules) {
@@ -361,11 +422,12 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         else if (d.shifts.length > 0) row.push(d.shifts.join(""));
         else row.push("");
       });
+      row.push(calculateTotalHours(days));
       data.push(row);
     }
 
     const ws = XLSX.utils.aoa_to_sheet([headerRow, ...data]);
-    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, ...monthDays.map(() => ({ wch: 6 }))];
+    ws["!cols"] = [{ wch: 20 }, { wch: 15 }, ...monthDays.map(() => ({ wch: 6 })), { wch: 8 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "جدول الدوام");
     XLSX.writeFile(wb, `جدول_الدوام_${monthLabel}.xlsx`);
@@ -641,6 +703,11 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
             <Calendar className="h-4 w-4 text-slate-400" />
             {monthLabel} ({filteredSchedules.length}{searchQuery || filterDept ? ` من ${schedules.length}` : ""} موظف)
+            {filteredSchedules.length > 0 && (
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mr-2">
+                إجمالي: {filteredSchedules.reduce((sum, emp) => sum + calculateTotalHours(ensureMonthDays(emp)), 0)} ساعة
+              </span>
+            )}
           </h3>
           {filteredSchedules.length > 0 && (
             <button onClick={handleDeleteAll} className="text-[10px] text-red-400 hover:text-red-600 font-bold transition-all">
@@ -663,8 +730,9 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                   <th className="py-2 px-2 sticky right-0 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400">#</th>
                   <th className="py-2 px-2 sticky right-6 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400 whitespace-nowrap">الموظف</th>
                   <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap">القسم</th>
+                  <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap min-w-[50px]">الساعات</th>
                   {monthDays.map((d, i) => {
-                    const dayNum = new Date(d.date).getDate();
+                    const dayNum = parseInt(d.date.split("-")[2]);
                     const weekend = isWeekend(d);
                     return (
                       <th key={i} className={`py-2 px-1 text-center min-w-[36px] ${weekend ? "bg-slate-100/80 dark:bg-slate-800/50" : ""}`}>
@@ -678,6 +746,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                 {filteredSchedules.map((emp, idx) => {
                   const days = ensureMonthDays(emp);
+                  const totalHours = calculateTotalHours(days);
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
                       <td className="py-1.5 px-2 sticky right-0 bg-white dark:bg-slate-900 z-10 font-bold text-slate-400">{filteredSchedules.length - idx}</td>
@@ -691,6 +760,13 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                       </td>
                       <td className="py-1.5 px-2">
                         <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{emp.department || "—"}</span>
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                          totalHours > 0 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+                        }`}>
+                          {totalHours}
+                        </span>
                       </td>
                       {days.map((d, di) => {
                         const weekend = isWeekend(d);
