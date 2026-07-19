@@ -22,6 +22,7 @@ import {
 import * as XLSX from "xlsx";
 import { OvertimeEntry } from "../types";
 import { verifyPassword, changePassword } from "../apiClient";
+import { useLang } from "../context/LanguageContext";
 
 interface Props {
   entries: OvertimeEntry[];
@@ -29,9 +30,8 @@ interface Props {
   isAdmin?: boolean;
 }
 
-const REASON_PRESETS = ["مغادرة", "إجازة", "سبب حر"];
-
 export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: Props) {
+  const { t } = useLang();
   const [formMode, setFormMode] = useState<"overtime" | "deduction">("overtime");
   const [employeeName, setEmployeeName] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -58,6 +58,8 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const REASON_PRESETS = [t("reasonPreset1"), t("reasonPreset2"), t("reasonPreset3")];
 
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -89,7 +91,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   const parseImportCSV = (text: string) => {
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) {
-        alert("الملف فارغ أو لا يحتوي على بيانات");
+        alert(t("importEmptyFile"));
         return;
       }
       const delimiter = lines[0].includes(";") ? ";" : ",";
@@ -99,12 +101,12 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
       const errors: string[] = [];
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(delimiter).map((c) => c.replace(/^"|"$/g, "").trim());
-        if (cols.length < 4) { errors.push(`سطر ${i + 1}: أعمدة غير كافية`); continue; }
+        if (cols.length < 4) { errors.push(t("importRowError", { i: i + 1 })); continue; }
         const [empName, dateVal, hoursVal, notesVal, typeVal, reasonVal] = cols;
-        if (!empName || !dateVal || !hoursVal) { errors.push(`سطر ${i + 1}: بيانات ناقصة`); continue; }
+        if (!empName || !dateVal || !hoursVal) { errors.push(t("importRowIncomplete", { i: i + 1 })); continue; }
         const h = parseFloat(hoursVal);
-        if (isNaN(h) || h <= 0 || h > 24) { errors.push(`سطر ${i + 1}: ساعات غير صالحة (${hoursVal})`); continue; }
-        const entryType = typeVal === "deduction" || typeVal === "خصم" ? "deduction" : "overtime";
+        if (isNaN(h) || h <= 0 || h > 24) { errors.push(t("importRowBadHours", { i: i + 1, hours: hoursVal })); continue; }
+        const entryType = typeVal === "deduction" || typeVal === t("csvTypeDeduction") ? "deduction" : "overtime";
         newEntries.push({
           id: "ot_import_" + Date.now() + "_" + i,
           employeeName: empName,
@@ -116,12 +118,12 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         });
       }
       if (newEntries.length > 0) {
-        if (window.confirm(`تم العثور على ${newEntries.length} سجل صالح. هل تريد إضافتها؟`)) {
+        if (window.confirm(t("importFoundRecords", { count: newEntries.length }))) {
           handleVerifyAndImport(newEntries);
         }
       }
       if (errors.length > 0) {
-        alert("أخطاء في الاستيراد:\n" + errors.slice(0, 10).join("\n"));
+        alert(t("importErrors") + errors.slice(0, 10).join("\n"));
       }
   };
 
@@ -138,7 +140,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
     setPasswordError(null);
     const valid = await verifyPassword(passwordInput);
     setPasswordLoading(false);
-    if (!valid) { setPasswordError("الباسورد غير صحيح"); return; }
+    if (!valid) { setPasswordError(t("errPasswordWrong")); return; }
     if (pendingImport) {
       onUpdate([...pendingImport, ...entries]);
     } else if (pendingClearAll) {
@@ -223,23 +225,23 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   const handleAddClick = () => {
     const h = parseFloat(hours);
     if (!employeeName.trim()) {
-      setError("يرجى إدخال اسم الموظف");
+      setError(t("errNameRequired"));
       return;
     }
     if (!date) {
-      setError("يرجى اختيار التاريخ");
+      setError(t("errDateRequired"));
       return;
     }
     if (isNaN(h) || h <= 0) {
-      setError("يرجى إدخال عدد ساعات صحيح");
+      setError(t("errHoursRequired"));
       return;
     }
     if (h > 24) {
-      setError("لا يمكن أن تتجاوز الساعات 24 ساعة يومياً");
+      setError(t("errHoursMax"));
       return;
     }
     if (formMode === "deduction" && !reason.trim()) {
-      setError("يرجى إدخال سبب الخصم");
+      setError(t("errDeductionReason"));
       return;
     }
     setError(null);
@@ -253,7 +255,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
     setPasswordLoading(false);
 
     if (!valid) {
-      setPasswordError("الباسورد غير صحيح");
+      setPasswordError(t("errPasswordWrong"));
       return;
     }
 
@@ -291,7 +293,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
     setPasswordLoading(false);
 
     if (!valid) {
-      setPasswordError("الباسورد غير صحيح");
+      setPasswordError(t("errPasswordWrong"));
       return;
     }
 
@@ -304,12 +306,12 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
 
   const handleClearAll = () => {
     if (searchQuery.trim()) {
-      if (window.confirm(`هل أنت متأكد من حذف جميع سجلات ${searchQuery.trim()}؟`)) {
+      if (window.confirm(t("confirmDeleteRecords", { name: searchQuery.trim() }))) {
         setPendingClearAll(true);
         setShowPasswordModal(true);
       }
     } else {
-      if (window.confirm("هل أنت متأكد من حذف جميع سجلات العمل الإضافي لجميع الموظفين؟")) {
+      if (window.confirm(t("confirmDeleteAll"))) {
         setPendingClearAll(true);
         setShowPasswordModal(true);
       }
@@ -317,7 +319,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
   };
 
   const handleExportCSV = () => {
-    const headers = ["#", "الموظف", "التاريخ", "اليوم", "النوع", "الساعات", "السبب", "ملاحظات"];
+    const headers = ["#", t("csvColEmployee"), t("csvColDate"), t("csvColDay"), t("csvColType"), t("csvColHours"), t("csvColReason"), t("csvColNotes")];
     const rows = filteredEntries.map((entry, idx) => {
       const d = new Date(entry.date);
       const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
@@ -326,7 +328,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         entry.employeeName,
         entry.date,
         dayName,
-        entry.type === "deduction" ? "خصم" : "عمل إضافي",
+        entry.type === "deduction" ? t("csvTypeDeduction") : t("csvTypeOvertime"),
         entry.hours,
         entry.reason || "-",
         entry.notes || "-",
@@ -342,7 +344,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `سجل_العمل_الاضافي_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute("download", `${t("csvFilePrefix")}${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -384,21 +386,23 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
       doc.setFont("NotoArabic");
     }
 
+    const dateString = new Date().toLocaleDateString("ar-EG");
+
     doc.setFontSize(16);
-    doc.text("سجل العمل الإضافي والخصومات", 148, 15, { align: "center" });
+    doc.text(t("pdfTitle"), 148, 15, { align: "center" });
     doc.setFontSize(10);
-    doc.text(`تاريخ التصدير: ${new Date().toLocaleDateString("ar-EG")}`, 148, 22, { align: "center" });
+    doc.text(t("pdfExportDate", { date: dateString }), 148, 22, { align: "center" });
 
     if (searchQuery.trim()) {
-      doc.text(`الموظف: ${searchQuery.trim()}`, 148, 28, { align: "center" });
+      doc.text(t("pdfEmployeeFilter", { name: searchQuery.trim() }), 148, 28, { align: "center" });
     }
     if (dateFrom || dateTo) {
-      const range = `من ${dateFrom || "—"} إلى ${dateTo || "—"}`;
+      const range = t("pdfDateRange", { from: dateFrom || "—", to: dateTo || "—" });
       doc.text(range, 148, searchQuery.trim() ? 34 : 28, { align: "center" });
     }
 
     const startY = 38;
-    const headers = [["#", "الموظف", "التاريخ", "اليوم", "النوع", "الساعات", "السبب", "ملاحظات"]];
+    const headers = [["#", t("csvColEmployee"), t("csvColDate"), t("csvColDay"), t("csvColType"), t("csvColHours"), t("csvColReason"), t("csvColNotes")]];
     const data = filteredEntries.map((entry, idx) => {
       const d = new Date(entry.date);
       const dayName = d.toLocaleDateString("ar-EG", { weekday: "long" });
@@ -407,7 +411,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         entry.employeeName,
         entry.date,
         dayName,
-        entry.type === "deduction" ? "خصم" : "عمل إضافي",
+        entry.type === "deduction" ? t("csvTypeDeduction") : t("csvTypeOvertime"),
         `${entry.hours}`,
         entry.reason || "-",
         entry.notes || "-",
@@ -441,16 +445,16 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         const pageHeight = doc.internal.pageSize.height;
         doc.setFontSize(9);
         doc.text(
-          `عمل إضافي: ${totalOvertimeHours} س | خصومات: ${totalDeductionHours} س | صافي: ${netHours} س = ${totalDays} يوم  |  عدد السجلات: ${filteredEntries.length}`,
+          t("pdfSummary", { ot: totalOvertimeHours, ded: totalDeductionHours, net: netHours, days: totalDays, count: filteredEntries.length }),
           148,
           pageHeight - 10,
           { align: "center" }
         );
-        doc.text(`صفحة ${doc.getNumberOfPages()}`, 14, pageHeight - 10);
+        doc.text(t("pdfPage", { num: doc.getNumberOfPages() }), 14, pageHeight - 10);
       },
     });
 
-    doc.save(`سجل_العمل_الاضافي_${new Date().toISOString().split("T")[0]}.pdf`);
+    doc.save(`${t("csvFilePrefix")}${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
   return (
@@ -464,10 +468,10 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             </div>
             <div>
               <h2 className="text-lg font-black text-slate-800 dark:text-white">
-                سجل العمل الإضافي والخصومات
+                {t("overtimeTitle")}
               </h2>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                تسجيل ساعات العمل الإضافي والخصومات — كل 8 ساعات = يوم
+                {t("overtimeSubtitle")}
               </p>
             </div>
           </div>
@@ -486,7 +490,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
                 >
               <Upload className="h-3.5 w-3.5" />
-              <span>استيراد CSV / Excel</span>
+              <span>{t("importCsvExcel")}</span>
                 </button>
               </>
             )}
@@ -501,7 +505,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
             >
               <Key className="h-3.5 w-3.5" />
-              <span>تغيير الباسورد</span>
+              <span>{t("changePassword")}</span>
             </button>
           </div>
         </div>
@@ -512,10 +516,10 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الموظفين</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("employeesCount")}</span>
               <div className="flex items-baseline gap-1 pt-1">
                 <span className="text-3xl font-black text-slate-700 dark:text-white">{perEmployeeSummary.length}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">شخص</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{t("employeesCountUnit")}</span>
               </div>
             </div>
             <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg">
@@ -527,10 +531,10 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">عمل إضافي</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("overtimeHours")}</span>
               <div className="flex items-baseline gap-1 pt-1">
                 <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{totalOvertimeHours}</span>
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("hours")}</span>
               </div>
             </div>
             <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500 rounded-lg">
@@ -542,10 +546,10 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الخصومات</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("deductions")}</span>
               <div className="flex items-baseline gap-1 pt-1">
                 <span className="text-3xl font-black text-rose-600 dark:text-rose-400">{totalDeductionHours}</span>
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("hours")}</span>
               </div>
             </div>
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-500 rounded-lg">
@@ -557,15 +561,15 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الصافي</span>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("netHours")}</span>
               <div className="flex items-baseline gap-1 pt-1">
                 <span className={`text-3xl font-black ${netHours >= 0 ? "text-slate-700 dark:text-white" : "text-rose-600 dark:text-rose-400"}`}>
                   {netHours}
                 </span>
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("hours")}</span>
               </div>
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                = {totalDays} يوم {remainingHours > 0 ? `و ${remainingHours} س` : ""}
+                = {totalDays} {t("dayUnit")} {remainingHours > 0 ? `و ${remainingHours} ${t("hoursShort")}` : ""}
               </span>
             </div>
             <div className={`p-2.5 rounded-lg ${netHours >= 0 ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-rose-50 dark:bg-rose-950/30 text-rose-500"}`}>
@@ -578,9 +582,9 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
       {/* Progress Bar */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">تقدم تحويل الساعات لأيام (صافي)</span>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{t("progressTitle")}</span>
           <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-            {remainingHours}/8 ساعات
+            {remainingHours}/8 {t("hoursUnit")}
           </span>
         </div>
         <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -596,7 +600,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-4">
             <Users className="h-4 w-4 text-slate-400" />
-            <span>ملخص كل موظف</span>
+            <span>{t("perEmployeeSummary")}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {perEmployeeSummary.map(([name, data]) => (
@@ -612,18 +616,18 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{name}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">
-                      +{data.overtime} س
+                      +{data.overtime} {t("hoursShort")}
                     </span>
                     {data.deduction > 0 && (
                       <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 px-1.5 py-0.5 rounded">
-                        -{data.deduction} س
+                        -{data.deduction} {t("hoursShort")}
                       </span>
                     )}
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${data.net >= 0 ? "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800" : "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30"}`}>
-                      صافي: {data.net} س
+                      {t("netShort", { value: data.net })}
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                      {data.entries} سجل
+                      {t("recordsCount", { count: data.entries })}
                     </span>
                   </div>
                 </div>
@@ -637,7 +641,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
           <Plus className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <span>إضافة سجل جديد</span>
+          <span>{t("addNewEntry")}</span>
         </h3>
 
         {/* Mode Toggle */}
@@ -652,7 +656,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           >
             <span className="flex items-center justify-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5" />
-              إضافة
+              {t("addMode")}
             </span>
           </button>
           <button
@@ -665,14 +669,14 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           >
             <span className="flex items-center justify-center gap-1.5">
               <TrendingDown className="h-3.5 w-3.5" />
-              خصم
+              {t("deductionMode")}
             </span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="relative">
-            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">اسم الموظف</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("employeeNameLabel")}</label>
             <input
               type="text"
               value={employeeName}
@@ -682,7 +686,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               }}
               onFocus={() => setShowNameSuggestions(true)}
               onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
-              placeholder="اسم الموظف"
+              placeholder={t("employeeNamePlaceholder")}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
             />
             {showNameSuggestions && filteredNames.length > 0 && (
@@ -705,7 +709,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             )}
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">التاريخ</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("dateLabel")}</label>
             <input
               type="date"
               value={date}
@@ -714,7 +718,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">عدد الساعات</label>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("hoursLabel")}</label>
             <input
               type="number"
               step="0.5"
@@ -722,7 +726,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               max="24"
               value={hours}
               onChange={(e) => setHours(e.target.value)}
-              placeholder="مثال: 2.5"
+              placeholder={t("hoursPlaceholder")}
               className={`w-full bg-slate-50 dark:bg-slate-800 border text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none outline-none transition-all ${
                 formMode === "deduction"
                   ? "border-rose-200 dark:border-rose-900/40 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
@@ -732,7 +736,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           </div>
           {formMode === "deduction" ? (
             <div className="relative">
-              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">سبب الخصم</label>
+              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("deductionReasonLabel")}</label>
               <input
                 type="text"
                 value={reason}
@@ -742,7 +746,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 }}
                 onFocus={() => setShowReasonSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowReasonSuggestions(false), 200)}
-                placeholder="مغادرة / إجازة / سبب حر"
+                placeholder={t("deductionReasonPlaceholder")}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-rose-200 dark:border-rose-900/40 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all"
               />
               {showReasonSuggestions && (
@@ -765,12 +769,12 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             </div>
           ) : (
             <div>
-              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">ملاحظات (اختياري)</label>
+              <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">{t("notesOptional")}</label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="مثال: إكمال مشروع"
+                placeholder={t("notesPlaceholder")}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
               />
             </div>
@@ -802,7 +806,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           ) : (
             <Plus className="h-4 w-4" />
           )}
-          <span>{!isAdmin ? "المشاهدون لا يمكنهم الإضافة" : formMode === "deduction" ? "تسجيل الخصم" : "إضافة السجل"}</span>
+          <span>{!isAdmin ? t("viewerCantAdd") : formMode === "deduction" ? t("registerDeduction") : t("addEntry")}</span>
         </button>
       </div>
 
@@ -812,7 +816,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
               <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <span>السجلات ({filteredEntries.length}{searchQuery || dateFrom || dateTo ? ` من ${entries.length}` : ""})</span>
+              <span>{t("recordsTitle")} ({filteredEntries.length}{searchQuery || dateFrom || dateTo ? ` ${t("recordsOf")} ${entries.length}` : ""})</span>
             </h3>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -821,7 +825,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="بحث بالاسم..."
+                  placeholder={t("searchNamePlaceholder")}
                   className="pr-8 pl-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all w-36"
                 />
               </div>
@@ -830,7 +834,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   <button
                     onClick={handleExportPDF}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-lg transition-all"
-                    title="تصدير PDF"
+                    title={t("exportPdfTitle")}
                   >
                     <FileDown className="h-3 w-3" />
                     PDF
@@ -838,7 +842,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   <button
                     onClick={handleExportCSV}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-all"
-                    title="تصدير Excel"
+                    title={t("exportExcelTitle")}
                   >
                     <Download className="h-3 w-3" />
                     Excel
@@ -851,21 +855,21 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
                 >
                   <Trash2 className="h-3 w-3" />
-                  مسح الكل
+                  {t("clearAllBtn")}
                 </button>
               )}
             </div>
           </div>
           {/* Date Range Filter */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">فلتر بالتاريخ:</span>
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("dateFilter")}</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-[10px] font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
             />
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">إلى</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{t("to")}</span>
             <input
               type="date"
               value={dateTo}
@@ -877,7 +881,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 onClick={() => { setDateFrom(""); setDateTo(""); }}
                 className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline font-bold"
               >
-                مسح الفلتر
+                {t("clearFilter")}
               </button>
             )}
           </div>
@@ -887,10 +891,10 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
           <div className="py-12 text-center text-slate-400 dark:text-slate-500">
             <Clock className="h-10 w-10 mx-auto mb-2 opacity-30 text-slate-300 dark:text-slate-600" />
             <p className="text-sm font-bold">
-              {entries.length === 0 ? "لا توجد سجلات عمل إضافي" : "لا توجد نتائج مطابقة للبحث"}
+              {entries.length === 0 ? t("noRecords") : t("noResults")}
             </p>
             <p className="text-xs mt-1">
-              {entries.length === 0 ? "أضف سجلات باستخدام النموذج أعلاه" : "جرّب تغيير كلمة البحث"}
+              {entries.length === 0 ? t("noRecordsHint") : t("noResultsHint")}
             </p>
           </div>
         ) : (
@@ -899,13 +903,13 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">
                   <th className="py-3 px-4 font-semibold">#</th>
-                  <th className="py-3 px-4 font-semibold">الموظف</th>
-                  <th className="py-3 px-4 font-semibold">التاريخ</th>
-                  <th className="py-3 px-4 font-semibold">اليوم</th>
-                  <th className="py-3 px-4 font-semibold">النوع</th>
-                  <th className="py-3 px-4 font-semibold">الساعات</th>
-                  <th className="py-3 px-4 font-semibold">السبب / ملاحظات</th>
-                  <th className="py-3 px-4 font-semibold text-center">حذف</th>
+                  <th className="py-3 px-4 font-semibold">{t("csvColEmployee")}</th>
+                  <th className="py-3 px-4 font-semibold">{t("csvColDate")}</th>
+                  <th className="py-3 px-4 font-semibold">{t("csvColDay")}</th>
+                  <th className="py-3 px-4 font-semibold">{t("csvColType")}</th>
+                  <th className="py-3 px-4 font-semibold">{t("csvColHours")}</th>
+                  <th className="py-3 px-4 font-semibold">{t("colNotes")}</th>
+                  <th className="py-3 px-4 font-semibold text-center">{t("deleteBtn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -941,7 +945,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                             ? "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40"
                             : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40"
                         }`}>
-                          {isDeduction ? "خصم" : "إضافة"}
+                          {isDeduction ? t("typeDeduction") : t("typeOvertime")}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
@@ -951,7 +955,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                             : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40"
                         }`}>
                           {isDeduction ? <TrendingDown className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                          {entry.hours} ساعة
+                          {entry.hours} {t("hourUnit")}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-xs text-slate-500 dark:text-slate-400 max-w-[200px] truncate">
@@ -962,7 +966,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                           <button
                             onClick={() => handleDeleteClick(entry.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
-                            title="حذف السجل"
+                            title={t("deleteRecord")}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -977,14 +981,14 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               <tfoot>
                 <tr className="bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-700">
                   <td colSpan={5} className="py-3 px-4 text-xs font-bold text-slate-600 dark:text-slate-300 text-left">
-                    الإجمالي: إضافي {totalOvertimeHours} س | خصومات {totalDeductionHours} س
+                    {t("totalOvertime", { ot: totalOvertimeHours, ded: totalDeductionHours })}
                   </td>
                   <td className="py-3 px-4">
                     <span className={`text-sm font-black ${netHours >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                      صافي: {netHours} ساعة
+                      {t("totalNet", { net: netHours })}
                     </span>
                     <span className="text-xs text-slate-400 dark:text-slate-500 mr-2">
-                      = {totalDays} يوم
+                      = {totalDays} {t("dayUnit")}
                     </span>
                   </td>
                   <td colSpan={2}></td>
@@ -1002,7 +1006,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Lock className="h-4 w-4 text-amber-600" />
-                <span>{deleteId ? "تأكيد الحذف" : pendingImport ? "تأكيد الاستيراد" : formMode === "deduction" ? "تأكيد الخصم" : "تأكيد الإضافة"}</span>
+                <span>{deleteId ? t("passwordConfirmDelete") : pendingImport ? t("passwordConfirmImport") : formMode === "deduction" ? t("passwordConfirmDeduction") : t("passwordConfirmAdd")}</span>
               </h3>
               <button
                 onClick={() => {
@@ -1019,14 +1023,14 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {deleteId ? "أدخل الباسورد لتأكيد حذف هذا السجل" : pendingImport ? `أدخل الباسورد لاستيراد ${pendingImport.length} سجل` : formMode === "deduction" ? "أدخل الباسورد لتسجيل الخصم" : "أدخل الباسورد لتسجيل سجل العمل الإضافي"}
+              {deleteId ? t("passwordDeleteDesc") : pendingImport ? t("passwordImportDesc", { count: pendingImport.length }) : formMode === "deduction" ? t("passwordDeductionDesc") : t("passwordAddDesc")}
             </p>
             <input
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { deleteId ? handleConfirmDelete() : pendingImport ? handleConfirmImport() : handleVerifyAndAdd(); } }}
-              placeholder="أدخل الباسورد"
+              placeholder={t("passwordPlaceholder")}
               autoFocus
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
             />
@@ -1046,7 +1050,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 }}
                 className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
               >
-                إلغاء
+                {t("cancelBtn")}
               </button>
               <button
                 onClick={deleteId ? handleConfirmDelete : pendingImport ? handleConfirmImport : handleVerifyAndAdd}
@@ -1064,13 +1068,13 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 {passwordLoading ? (
                   <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                 ) : deleteId ? (
-                  "حذف"
+                  t("delete")
                 ) : pendingImport ? (
-                  "استيراد"
+                  t("confirmImport")
                 ) : formMode === "deduction" ? (
-                  "خصم"
+                  t("confirmDeduction")
                 ) : (
-                  "إضافة"
+                  t("confirmAdd")
                 )}
               </button>
             </div>
@@ -1085,7 +1089,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Key className="h-4 w-4 text-indigo-600" />
-                <span>تغيير الباسورد</span>
+                <span>{t("changePasswordTitle")}</span>
               </h3>
               <button
                 onClick={() => setShowChangePasswordModal(false)}
@@ -1096,7 +1100,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
             </div>
             {changePasswordSuccess ? (
               <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs rounded-xl text-center font-bold">
-                تم تغيير الباسورد بنجاح!
+                {t("passwordChangedSuccess")}
               </div>
             ) : (
               <>
@@ -1104,14 +1108,14 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   type="password"
                   value={oldPasswordInput}
                   onChange={(e) => setOldPasswordInput(e.target.value)}
-                  placeholder="الباسورد القديم"
+                  placeholder={t("oldPasswordPlaceholder")}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                 />
                 <input
                   type="password"
                   value={newPasswordInput}
                   onChange={(e) => setNewPasswordInput(e.target.value)}
-                  placeholder="الباسورد الجديد"
+                  placeholder={t("newPasswordPlaceholder")}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                 />
                 {changePasswordError && (
@@ -1126,7 +1130,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                 onClick={() => setShowChangePasswordModal(false)}
                 className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
               >
-                {changePasswordSuccess ? "إغلاق" : "إلغاء"}
+                {changePasswordSuccess ? t("close") : t("cancelBtn")}
               </button>
               {!changePasswordSuccess && (
                 <button
@@ -1140,7 +1144,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                       setOldPasswordInput("");
                       setNewPasswordInput("");
                     } else {
-                      setChangePasswordError(result.error || "فشل تغيير الباسورد");
+                      setChangePasswordError(result.error || t("changeFailed"));
                     }
                   }}
                   disabled={changePasswordLoading || !oldPasswordInput || !newPasswordInput}
@@ -1149,7 +1153,7 @@ export default function OvertimeTracker({ entries, onUpdate, isAdmin = true }: P
                   {changePasswordLoading ? (
                     <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                   ) : (
-                    "تغيير"
+                    t("changeBtn")
                   )}
                 </button>
               )}

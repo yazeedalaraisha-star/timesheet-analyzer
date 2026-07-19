@@ -20,6 +20,7 @@ import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
 import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, DEFAULT_SHIFT_DEFINITIONS, ARABIC_DAYS, Shift } from "../types";
 import { analyzeScheduleImage } from "../apiClient";
+import { useLang } from "../context/LanguageContext";
 
 interface Props {
   schedules: EmployeeSchedule[];
@@ -55,6 +56,7 @@ function calculateTotalHours(days: DaySchedule[]): number {
 }
 
 export default function ScheduleManager({ schedules, onUpdate }: Props) {
+  const { t } = useLang();
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
@@ -91,7 +93,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const departments = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of schedules) {
-      const dept = s.department || "بدون قسم";
+      const dept = s.department || t("noDept");
       map.set(dept, (map.get(dept) || 0) + 1);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
@@ -99,7 +101,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
   const deptSchedules = useMemo(() => {
     if (!selectedDept) return [];
-    return schedules.filter((s) => (s.department || "بدون قسم") === selectedDept);
+    return schedules.filter((s) => (s.department || t("noDept")) === selectedDept);
   }, [schedules, selectedDept]);
 
   const filteredDeptSchedules = useMemo(() => {
@@ -155,15 +157,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const handleDeleteDept = (dept: string) => {
-    if (window.confirm(`هل أنت متأكد من حذف جميع موظفي قسم "${dept}"؟`)) {
-      onUpdate(schedules.filter((s) => (s.department || "بدون قسم") !== dept));
+    if (window.confirm(t("confirmDeleteDept", { dept }))) {
+      onUpdate(schedules.filter((s) => (s.department || t("noDept")) !== dept));
       if (selectedDept === dept) setSelectedDept(null);
     }
   };
 
   const handleDeleteAll = () => {
-    if (window.confirm(`هل أنت متأكد من مسح جميع موظفي قسم "${selectedDept}"؟`)) {
-      const kept = schedules.filter((s) => (s.department || "بدون قسم") !== selectedDept);
+    if (window.confirm(t("confirmClearDept", { dept: selectedDept || "" }))) {
+      const kept = schedules.filter((s) => (s.department || t("noDept")) !== selectedDept);
       onUpdate(kept);
     }
   };
@@ -224,15 +226,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const LEAVE_TYPES = [
-    "إجازة سنوية",
-    "إجازة مرضية",
-    "إجازة طارئة",
-    "إجازة بدون راتب",
-    "إجازة أمومة",
-    "إجازة حج",
-    "إجازة عزاء",
-    "إجازة رسمية",
-    "مهمة رسمية",
+    "leaveAnnual",
+    "leaveSick",
+    "leaveEmergency",
+    "leaveUnpaid",
+    "leaveMaternity",
+    "leaveHajj",
+    "leaveBereavement",
+    "leaveOfficial",
+    "leaveMission",
   ];
 
   const handleAddEmployee = () => {
@@ -249,7 +251,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm("هل أنت متأكد من حذف هذا الموظف؟")) {
+    if (window.confirm(t("confirmDeleteEmployee"))) {
       onUpdate(schedules.filter((s) => s.id !== id));
     }
   };
@@ -260,7 +262,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     e.target.value = "";
 
     setOcrLoading(true);
-    setOcrStatus("جاري قراءة الصورة...");
+    setOcrStatus(t("ocrReading"));
 
     try {
       const reader = new FileReader();
@@ -270,17 +272,17 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         reader.readAsDataURL(file);
       });
 
-      setOcrStatus("جاري تحليل الصورة بالذكاء الاصطناعي...");
+      setOcrStatus(t("ocrAnalyzing"));
 
       const result = await analyzeScheduleImage(base64, currentMonth + 1, currentYear);
 
       if (!result?.employees || result.employees.length === 0) {
-        alert("لم يتم العثور على بيانات في الصورة");
+        alert(t("ocrNoData"));
         setOcrLoading(false);
         return;
       }
 
-      const dept = selectedDept || "بدون قسم";
+      const dept = selectedDept || t("noDept");
       const newSchedules: EmployeeSchedule[] = [];
       for (const emp of result.employees) {
         if (!emp.name || emp.name === "—") continue;
@@ -308,15 +310,15 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
       if (newSchedules.length > 0) {
         const filtered = schedules.filter(
-          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
         );
         onUpdate([...filtered, ...newSchedules]);
-        alert(`تم استخراج جدول ${newSchedules.length} موظف من الصورة`);
+        alert(t("ocrExtracted", { count: newSchedules.length }));
       } else {
-        alert("لم يتم استخراج بيانات صالحة من الصورة");
+        alert(t("ocrNoValid"));
       }
     } catch (err: any) {
-      alert("خطأ في قراءة الصورة: " + (err.message || "خطأ غير معروف"));
+      alert(t("ocrError", { error: err.message || t("ocrUnknownError") }));
     } finally {
       setOcrLoading(false);
       setOcrStatus("");
@@ -352,8 +354,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const parseExcelData = (rows: Record<string, any>[]) => {
-    if (rows.length < 2) { alert("الملف فارغ"); return; }
-    const dept = selectedDept || "بدون قسم";
+    if (rows.length < 2) { alert(t("importFileEmpty")); return; }
+    const dept = selectedDept || t("noDept");
 
     const headerRow = rows[0].map(String).map((h) => h?.trim() || "");
     const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name|employee/i.test(h));
@@ -450,22 +452,22 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
 
     if (newSchedules.length > 0) {
-      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم؟`)) {
+      if (window.confirm(t("importFound", { count: newSchedules.length }))) {
         const existing = schedules.filter(
-          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
         );
         onUpdate([...existing, ...newSchedules]);
       }
     } else {
-      alert("لم يتم العثور على بيانات صالحة");
+      alert(t("importNoValid"));
     }
   };
 
   const parseCSVAndImport = (text: string) => {
-    if (text.trim().length < 10) { alert("الملف فارغ"); return; }
-    const dept = selectedDept || "بدون قسم";
+    if (text.trim().length < 10) { alert(t("importFileEmpty")); return; }
+    const dept = selectedDept || t("noDept");
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    if (lines.length < 2) { alert("الملف فارغ"); return; }
+    if (lines.length < 2) { alert(t("importFileEmpty")); return; }
 
     const delimiter = lines[0].includes(";") ? ";" : ",";
     const header = lines[0].split(delimiter).map((h) => h.replace(/^"|"$/g, "").trim());
@@ -550,9 +552,9 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
 
     if (newSchedules.length > 0) {
-      if (window.confirm(`تم العثور على ${newSchedules.length} موظف. هل تريد إضافتهم؟`)) {
+      if (window.confirm(t("importFound", { count: newSchedules.length }))) {
         const existing = schedules.filter(
-          (s) => (s.department || "بدون قسم") !== dept || s.employeeName === "—"
+          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
         );
         onUpdate([...existing, ...newSchedules]);
       }
@@ -560,9 +562,9 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   };
 
   const handleExportExcel = () => {
-    const headerRow: any[] = ["الموظف"];
+    const headerRow: any[] = [t("excelColEmployee")];
     monthDays.forEach((d) => { headerRow.push(`${parseInt(d.date.split("-")[2])}`); });
-    headerRow.push("الساعات");
+    headerRow.push(t("excelColHours"));
 
     const data: any[][] = [];
     for (const emp of filteredDeptSchedules) {
@@ -580,8 +582,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     const ws = XLSX.utils.aoa_to_sheet([headerRow, ...data]);
     ws["!cols"] = [{ wch: 20 }, ...monthDays.map(() => ({ wch: 6 })), { wch: 8 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "جدول الدوام");
-    XLSX.writeFile(wb, `جدول_الدوام_${selectedDept || ""}_${monthLabel}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, t("sheetName"));
+    XLSX.writeFile(wb, `${t("filePrefix")}${selectedDept || ""}_${monthLabel}.xlsx`);
   };
 
   const handleExportImage = async () => {
@@ -589,10 +591,10 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     try {
       const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false });
       const link = document.createElement("a");
-      link.download = `جدول_الدوام_${selectedDept || ""}_${monthLabel}.png`;
+      link.download = `${t("filePrefix")}${selectedDept || ""}_${monthLabel}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
-    } catch { alert("حدث خطأ أثناء التصدير"); }
+    } catch { alert(t("exportError")); }
   };
 
   const handleExportPDF = async () => {
@@ -607,8 +609,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         format: [canvas.width, canvas.height],
       });
       pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-      pdf.save(`جدول_الدوام_${selectedDept || ""}_${monthLabel}.pdf`);
-    } catch { alert("حدث خطأ أثناء التصدير"); }
+      pdf.save(`${t("filePrefix")}${selectedDept || ""}_${monthLabel}.pdf`);
+    } catch { alert(t("exportError")); }
   };
 
   const dayNameShort = (dayName: string) => {
@@ -630,9 +632,9 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                 <Calendar className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-800 dark:text-white">جدول الدوام</h2>
+                <h2 className="text-lg font-black text-slate-800 dark:text-white">{t("scheduleTitle")}</h2>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                  اختر قسم لعرض جدول الدوام — الشفتات: A (06-14) / B (14-22) / C (22-06)
+                  {t("scheduleDesc")}
                 </p>
               </div>
             </div>
@@ -652,23 +654,23 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
         {/* Add New Department */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5">
-          <h3 className="font-bold text-slate-700 dark:text-white text-sm mb-3">إضافة قسم جديد</h3>
+          <h3 className="font-bold text-slate-700 dark:text-white text-sm mb-3">{t("addDepartment")}</h3>
           {showNewDeptInput ? (
             <div className="flex gap-2">
               <input
                 type="text"
                 value={newDeptName}
                 onChange={(e) => setNewDeptName(e.target.value)}
-                placeholder="اسم القسم..."
+                placeholder={t("deptPlaceholder")}
                 autoFocus
                 onKeyDown={(e) => e.key === "Enter" && handleAddDept()}
                 className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
               />
               <button onClick={handleAddDept} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all">
-                حفظ
+                {t("saveBtn")}
               </button>
               <button onClick={() => { setShowNewDeptInput(false); setNewDeptName(""); }} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
-                إلغاء
+                {t("cancelBtn")}
               </button>
             </div>
           ) : (
@@ -677,7 +679,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
               className="inline-flex items-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30 border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 text-sm font-bold rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-all w-full justify-center"
             >
               <Plus className="h-4 w-4" />
-              إضافة قسم جديد
+              {t("addDepartment")}
             </button>
           )}
         </div>
@@ -687,14 +689,14 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           <div className="p-4 border-b border-slate-100 dark:border-slate-800">
             <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
               <Building2 className="h-4 w-4 text-slate-400" />
-              الأقسام ({departments.length})
+              {t("departmentCount", { count: departments.length })}
             </h3>
           </div>
           {departments.length === 0 ? (
             <div className="py-10 text-center text-slate-400">
               <Building2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm font-bold">لا يوجد أقسام بعد</p>
-              <p className="text-xs mt-1">أضف قسم جديد للبدء</p>
+              <p className="text-sm font-bold">{t("noDepartments")}</p>
+              <p className="text-xs mt-1">{t("addDeptHint")}</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
@@ -710,14 +712,14 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                     </div>
                     <div>
                       <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{dept}</span>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{count} موظف</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{t("deptEmployeeCount", { count })}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteDept(dept); }}
                       className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 transition-all"
-                      title="حذف القسم"
+                      title={t("deleteDept")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -751,7 +753,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
             <div className="flex-1">
               <h2 className="text-lg font-black text-slate-800 dark:text-white">{selectedDept}</h2>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                {deptSchedules.length} موظف — {monthLabel}
+                {t("deptEmployeeCount", { count: deptSchedules.length })} — {monthLabel}
               </p>
             </div>
           </div>
@@ -772,7 +774,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="flex items-center gap-2 text-xs">
           <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
             <Clock className="h-3 w-3 inline ml-1" />
-            {deptSchedules.reduce((sum, emp) => sum + calculateTotalHours(ensureMonthDays(emp)), 0)} ساعة إجمالي
+            {deptSchedules.reduce((sum, emp) => sum + calculateTotalHours(ensureMonthDays(emp)), 0)} {t("totalHours")}
           </span>
           {SHIFT_NAMES.map((s) => (
             <span key={s} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${SHIFT_COLORS[s]}`}>
@@ -782,7 +784,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           <button
             onClick={() => setShowShiftSettings(!showShiftSettings)}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg transition-all"
-            title="إعدادات الشفتات"
+            title={t("shiftSettings")}
           >
             <Settings className="h-3.5 w-3.5" />
           </button>
@@ -794,7 +796,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-4">
           <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-3">
             <Settings className="h-4 w-4 text-slate-400" />
-            إعدادات أوقات الشفتات
+            {t("shiftSettings")}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {SHIFT_NAMES.map((s) => (
@@ -818,10 +820,10 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           </div>
           <div className="flex items-center gap-2 mt-3">
             <button onClick={handleResetShifts} className="text-[10px] text-slate-400 hover:text-red-500 font-bold transition-all">
-              إعادة تعيين
+              {t("resetShifts")}
             </button>
             <button onClick={() => setShowShiftSettings(false)} className="text-[10px] text-slate-400 hover:text-slate-600 font-bold transition-all mr-auto">
-              إخفاء
+              {t("hideSettings")}
             </button>
           </div>
         </div>
@@ -835,7 +837,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-xs font-bold rounded-xl transition-all"
         >
           <Upload className="h-3.5 w-3.5" />
-          رفع ملف
+          {t("uploadFile")}
         </button>
 
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageImport} />
@@ -845,7 +847,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50"
         >
           {ocrLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-          {ocrLoading ? ocrStatus || "جاري التحليل..." : "رفع صورة جدول"}
+          {ocrLoading ? ocrStatus || t("analyzingOcr") : t("uploadScheduleImage")}
         </button>
 
         <button
@@ -853,7 +855,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all"
         >
           <Plus className="h-3.5 w-3.5" />
-          إضافة موظف
+          {t("addEmployee")}
         </button>
 
         {filteredDeptSchedules.length > 0 && (
@@ -868,7 +870,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
             </button>
             <button onClick={handleExportImage} className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all">
               <ImageIcon className="h-3.5 w-3.5" />
-              صورة
+              {t("exportImage")}
             </button>
           </>
         )}
@@ -879,7 +881,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالاسم..."
+            placeholder={t("searchPlaceholder")}
             className="w-full pr-8 pl-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
           />
         </div>
@@ -889,7 +891,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       {editingCell && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">اختر:</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{t("shiftPickerLabel")}</span>
             {SHIFT_NAMES.map((s) => (
               <button
                 key={s}
@@ -903,13 +905,13 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
               onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "OFF")}
               className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:scale-105 active:scale-95 transition-all"
             >
-              إجازة
+              {t("leaveLabel")}
             </button>
             <button
               onClick={() => handleToggleShift(editingCell.empId, editingCell.dayIdx, "CLEAR")}
               className="px-3 py-1.5 text-xs font-bold rounded-lg border bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 hover:scale-105 active:scale-95 transition-all"
             >
-              مسح
+              {t("clear")}
             </button>
             <button onClick={() => setEditingCell(null)} className="mr-auto p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-all">
               ✕
@@ -917,14 +919,14 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
           </div>
           {/* Leave type selector */}
           <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-[10px] font-bold text-slate-400">نوع الإجازة:</span>
+            <span className="text-[10px] font-bold text-slate-400">{t("leaveTypeLabel")}</span>
             {LEAVE_TYPES.map((lt) => (
               <button
                 key={lt}
                 onClick={() => handleSetLeaveType(editingCell.empId, editingCell.dayIdx, lt)}
                 className="px-2 py-1 text-[10px] font-bold rounded-lg border bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800 hover:scale-105 active:scale-95 transition-all"
               >
-                {lt}
+                {t(lt)}
               </button>
             ))}
           </div>
@@ -936,23 +938,23 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-4">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-3">
             <Plus className="h-4 w-4 text-emerald-600" />
-            إضافة موظف لقسم: {selectedDept}
+            {t("addDeptTo", { dept: selectedDept })}
           </h3>
           <div className="flex gap-2">
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="اسم الموظف"
+              placeholder={t("employeeNamePlaceholder")}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleAddEmployee()}
               className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-slate-300/50 focus:border-slate-400 outline-none transition-all"
             />
             <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
-              إلغاء
+              {t("cancelBtn")}
             </button>
             <button onClick={handleAddEmployee} disabled={!newName.trim()} className={`px-4 py-2 text-white text-sm font-bold rounded-xl transition-all ${!newName.trim() ? "opacity-50 cursor-not-allowed bg-slate-400" : "bg-emerald-600 hover:bg-emerald-700"}`}>
-              حفظ
+              {t("saveBtn")}
             </button>
           </div>
         </div>
@@ -963,11 +965,11 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
             <Calendar className="h-4 w-4 text-slate-400" />
-            {selectedDept} — {monthLabel} ({filteredDeptSchedules.length} موظف)
+            {selectedDept} — {monthLabel} ({t("deptEmployeeCount", { count: filteredDeptSchedules.length })})
           </h3>
           {deptSchedules.filter((s) => s.employeeName !== "—").length > 0 && (
             <button onClick={handleDeleteAll} className="text-[10px] text-red-400 hover:text-red-600 font-bold transition-all">
-              مسح كل الموظفين
+              {t("clearAllEmployees")}
             </button>
           )}
         </div>
@@ -975,8 +977,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         {filteredDeptSchedules.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500">
             <Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm font-bold">لا يوجد موظفين في هذا القسم</p>
-            <p className="text-xs mt-1">ارفع ملف أو صورة أو أضف موظفين يدوياً</p>
+            <p className="text-sm font-bold">{t("noEmployees")}</p>
+            <p className="text-xs mt-1">{t("noEmployeesHint")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -984,8 +986,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
               <thead>
                 <tr className="bg-slate-50/80 dark:bg-slate-800/30">
                   <th className="py-2 px-2 sticky right-0 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400">#</th>
-                  <th className="py-2 px-2 sticky right-6 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400 whitespace-nowrap">الموظف</th>
-                  <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap min-w-[50px]">الساعات</th>
+                  <th className="py-2 px-2 sticky right-6 bg-slate-50/80 dark:bg-slate-800/30 z-10 text-[10px] font-bold text-slate-400 whitespace-nowrap">{t("colEmployee")}</th>
+                  <th className="py-2 px-2 text-[10px] font-bold text-slate-400 whitespace-nowrap min-w-[50px]">{t("colHours")}</th>
                   {monthDays.map((d, i) => {
                     const dayNum = parseInt(d.date.split("-")[2]);
                     const weekend = isWeekend(d);
@@ -1009,7 +1011,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap text-[11px]">{emp.employeeName}</span>
                           {emp.employeeName !== "—" && (
-                            <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title="حذف">
+                            <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title={t("deleteBtn")}>
                               <Trash2 className="h-3 w-3" />
                             </button>
                           )}
@@ -1037,7 +1039,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                           >
                             {d.isOff ? (
                               d.leaveType ? (
-                                <span className="text-[8px] font-bold text-rose-500 dark:text-rose-400 leading-tight block">{d.leaveType}</span>
+                                <span className="text-[8px] font-bold text-rose-500 dark:text-rose-400 leading-tight block">{t(d.leaveType)}</span>
                               ) : (
                                 <span className="text-[9px] font-bold text-red-400">OFF</span>
                               )

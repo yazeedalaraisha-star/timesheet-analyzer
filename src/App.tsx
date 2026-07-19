@@ -163,7 +163,6 @@ export default function App() {
   
   // Saved reports history state (stored in localStorage + DB)
   const [history, setHistory] = useState<SavedReport[]>([]);
-  const [showHistory, setShowHistory] = useState<boolean>(false);
   const [dbAvailable, setDbAvailable] = useState<boolean>(false);
 
   // Tab/View selector for result
@@ -211,7 +210,7 @@ export default function App() {
       setAdminPasswordInput("");
       setAdminLoginError(null);
     } else {
-      setAdminLoginError("الباسورد غير صحيح");
+      setAdminLoginError(t("wrongPassword"));
     }
   };
 
@@ -337,7 +336,7 @@ export default function App() {
 
   // Clear all history
   const clearAllHistory = () => {
-    if (window.confirm("هل أنت متأكد من رغبتك في حذف جميع التقارير المحفوظة؟")) {
+    if (window.confirm(t("confirmDeleteHistory"))) {
       setHistory([]);
       localStorage.removeItem("timesheet_reports_history");
       if (dbAvailable) clearAllReportsFromDB().catch(() => {});
@@ -887,7 +886,7 @@ export default function App() {
       
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
-        الانتقال إلى المحتوى الرئيسي
+        {t("skipToContent")}
       </a>
 
       {/* Header Bar */}
@@ -930,7 +929,7 @@ export default function App() {
                 className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
               >
                 <Shield className="h-3 w-3" />
-                دخول المدير
+                {t("adminLogin")}
               </button>
             )}
 
@@ -949,15 +948,15 @@ export default function App() {
             <div className="hidden sm:flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
               <button onClick={() => setViewMode("main")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
                 <FileText className="h-3.5 w-3.5 inline ml-1" />
-                التقرير
+                {t("tabReport")}
               </button>
-              <button onClick={() => setViewMode("schedule")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "schedule" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="جدول الدوام">
+              <button onClick={() => setViewMode("schedule")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "schedule" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("tabSchedule")}>
                 <Calendar className="h-3.5 w-3.5 inline ml-1" />
-                الجدول
+                {t("tabSchedule")}
               </button>
-              <button onClick={() => setViewMode("overtime")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title="العمل الإضافي">
+              <button onClick={() => setViewMode("overtime")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "overtime" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("tabOvertime")}>
                 <Clock className="h-3.5 w-3.5 inline ml-1" />
-                الإضافي
+                {t("tabOvertime")}
               </button>
             </div>
 
@@ -979,24 +978,10 @@ export default function App() {
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            {/* History Toggle Button */}
-            <button
-              id="history-btn"
-              onClick={() => setShowHistory(!showHistory)}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all border ${
-                showHistory 
-                  ? "bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-800 dark:border-slate-200" 
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-800"
-              }`}
-            >
-              <History className="h-4 w-4" />
-              <span>{t("history")} ({history.length})</span>
-            </button>
-
             <a 
               href="#instructions" 
               className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-              title="Guide"
+              title={t("guideTitle")}
             >
               <HelpCircle className="h-4 w-4" />
             </a>
@@ -1032,85 +1017,82 @@ export default function App() {
           <>
           <div className="lg:col-span-4 space-y-6 print:hidden">
             
-            {/* Saved Reports Sidebar/Dropdown overlay */}
-            {showHistory && (
-              <div id="history-panel" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-lg p-5 animate-fade-in-down">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
-                  <div className="flex items-center gap-2 text-slate-700 dark:text-white font-bold text-sm">
-                    <History className="h-4 w-4 text-slate-400" />
-                    <span>التقارير المحفوظة</span>
-                  </div>
-                  {history.length > 0 && (
-                    <button 
-                      onClick={clearAllHistory}
-                      className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      مسح الكل
-                    </button>
-                  )}
+            {/* Saved Reports Sidebar */}
+            <div id="history-panel" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-lg p-5 transition-colors">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+                <div className="flex items-center gap-2 text-slate-700 dark:text-white font-bold text-sm">
+                  <History className="h-4 w-4 text-slate-400" />
+                  <span>{t("savedReports")} ({history.length})</span>
                 </div>
-
-                {history.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 dark:text-slate-500">
-                    <History className="h-8 w-8 mx-auto mb-2 opacity-40 text-slate-300 dark:text-slate-600" />
-                    <p className="text-xs">لا يوجد تقارير محفوظة حالياً في هذا المتصفح.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                    {history.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          setResult(item.result);
-                          setOfficialStartTime(item.officialStartTime);
-                          setOfficialEndTime(item.officialEndTime || "17:00:00");
-                          setImagePreview("HISTORY");
-                          setShowHistory(false);
-                        }}
-                        className="group flex items-start justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer transition-all text-right"
-                      >
-                        <div className="space-y-1">
-                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white">
-                            {item.result.employee_info.name}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                            <span>رقم: {item.result.employee_info.id}</span>
-                            <span>•</span>
-                            <span>{item.savedAt}</span>
-                          </div>
-                          <div className="flex gap-2 mt-1">
-                            <span className="text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900 px-1.5 py-0.5 rounded">
-                              تأخير: {item.result.kpis.totalDelayMinutes} د
-                            </span>
-                            <span className="text-[10px] bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-900 px-1.5 py-0.5 rounded">
-                              غياب: {item.result.kpis.totalAbsences}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => deleteHistoryItem(item.id, e)}
-                          className="p-1 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all opacity-0 group-hover:opacity-100"
-                          title="حذف هذا التقرير"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                {history.length > 0 && (
+                  <button 
+                    onClick={clearAllHistory}
+                    className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {t("clearAll")}
+                  </button>
                 )}
               </div>
-            )}
+
+              {history.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 dark:text-slate-500">
+                  <History className="h-8 w-8 mx-auto mb-2 opacity-40 text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs">{t("noReports")}</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                  {history.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setResult(item.result);
+                        setOfficialStartTime(item.officialStartTime);
+                        setOfficialEndTime(item.officialEndTime || "17:00:00");
+                        setImagePreview("HISTORY");
+                      }}
+                      className="group flex items-start justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer transition-all text-right"
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white">
+                          {item.result.employee_info.name}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          <span>{t("numberLabel")} {item.result.employee_info.id}</span>
+                          <span>•</span>
+                          <span>{item.savedAt}</span>
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          <span className="text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-900 px-1.5 py-0.5 rounded">
+                            {t("delayBadge")} {item.result.kpis.totalDelayMinutes} {t("minuteShort")}
+                          </span>
+                          <span className="text-[10px] bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-900 px-1.5 py-0.5 rounded">
+                            {t("absenceBadge")} {item.result.kpis.totalAbsences}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => deleteHistoryItem(item.id, e)}
+                        className="p-1 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all opacity-0 group-hover:opacity-100"
+                        title={t("deleteReport")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Main Upload Box */}
             <div id="upload-card" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
               <div className="p-5 border-b border-slate-100 dark:border-slate-800">
                 <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
                   <Upload className="h-4 w-4 text-slate-400" />
-                  <span>تحميل كشف الدوام</span>
+                  <span>{t("uploadTitle")}</span>
                 </h2>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  اسحب لقطات الشاشة أو تصفح ملفاتك — يمكن اختيار عدة صور
+                  {t("uploadMultiDesc")}
                 </p>
               </div>
 
@@ -1135,7 +1117,7 @@ export default function App() {
                       {/* Multi-image thumbnails */}
                       {multiImages.length > 1 && (
                         <div className="flex items-center justify-center gap-2 mb-2">
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{multiImages.length} صور</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{multiImages.length} {t("images")}</span>
                           {multiImages.map((img, idx) => (
                             <button
                               key={idx}
@@ -1146,14 +1128,14 @@ export default function App() {
                                   : "border-slate-200 dark:border-slate-700 opacity-50 hover:opacity-100"
                               }`}
                             >
-                              <img src={img} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover" />
+                              <img src={img} alt={`${t("singleImage")} ${idx + 1}`} className="w-full h-full object-cover" />
                             </button>
                           ))}
                         </div>
                       )}
                       <img 
                         src={imagePreview} 
-                        alt="كشف الدوام المرفوع" 
+                        alt={t("uploadedTimesheet")} 
                         className="max-h-48 mx-auto rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 object-contain" 
                       />
                       <div className="flex items-center justify-center gap-2">
@@ -1162,10 +1144,10 @@ export default function App() {
                           onClick={handleReset}
                           className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200/60 transition-all"
                         >
-                          إزالة
+                          {t("remove")}
                         </button>
                         <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer">
-                          تغيير
+                          {t("changeImage")}
                           <input 
                             id="file-input-change"
                             type="file" 
@@ -1184,15 +1166,15 @@ export default function App() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                          اسحب لقطات الشاشة إلى هنا
+                          {t("dragDrop")}
                         </p>
                         <p className="text-[11px] text-slate-400">
-                          PNG، JPG، JPEG — يمكن اختيار عدة صور
+                          {t("dragDropMultiHint")}
                         </p>
                       </div>
                       <div>
                         <label className="inline-flex items-center justify-center px-4 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer">
-                          اختر ملف
+                          {t("chooseFile")}
                           <input 
                             id="file-input-main"
                             type="file" 
@@ -1211,13 +1193,13 @@ export default function App() {
                 <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-3">
                   <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5" />
-                    <span>ساعات الدوام الرسمي</span>
+                    <span>{t("officialWorkHours")}</span>
                   </h3>
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">
-                        البداية
+                        {t("startLabel")}
                       </label>
                       <div className="relative">
                         <select 
@@ -1237,7 +1219,7 @@ export default function App() {
 
                     <div>
                       <label className="block text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">
-                        النهاية
+                        {t("endLabel")}
                       </label>
                       <div className="relative">
                         <select 
@@ -1283,12 +1265,12 @@ export default function App() {
                   ) : !isAdmin ? (
                     <>
                       <Eye className="h-4 w-4" />
-                      <span>المشاهدون لا يمكنهم التحليل</span>
+                      <span>{t("viewerCantAnalyze")}</span>
                     </>
                   ) : multiImages.length > 1 ? (
                     <>
                       <TrendingUp className="h-4 w-4" />
-                      <span>حلل {multiImages.length} صور الآن</span>
+                      <span>{t("analyzeImageCount", { count: multiImages.length })}</span>
                     </>
                   ) : (
                     <>
@@ -1320,9 +1302,9 @@ export default function App() {
                   <FileText className="h-7 w-7" />
                 </div>
                 <div className="max-w-md mx-auto space-y-2">
-                  <h3 className="text-base font-bold text-slate-700 dark:text-white">في انتظار رفع كشف الدوام</h3>
+                  <h3 className="text-base font-bold text-slate-700 dark:text-white">{t("emptyState")}</h3>
                   <p className="text-[13px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                    قم بتحميل لقطة شاشة لكشف الدوام لبدء التحليل واستخراج تقارير الحضور والانصراف.
+                    {t("emptyStateDesc")}
                   </p>
                 </div>
               </div>
@@ -1369,7 +1351,7 @@ export default function App() {
                           <User className="h-5 w-5" />
                         </div>
                         <div>
-                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase">بطاقة الموظف</span>
+                          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase">{t("employeeInfo")}</span>
                           <h2 className="text-lg font-black text-slate-800 dark:text-white mt-0.5">
                             {result.employee_info.name}
                           </h2>
@@ -1382,7 +1364,7 @@ export default function App() {
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
                         >
                           <Printer className="h-3.5 w-3.5" />
-                          <span>طباعة</span>
+                          <span>{t("print")}</span>
                         </button>
 
                         <button
@@ -1406,7 +1388,7 @@ export default function App() {
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
                         >
                           {showRawJson ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          <span>{showRawJson ? "إخفاء" : "JSON"}</span>
+                          <span>{showRawJson ? t("hideJson") : t("showJson")}</span>
                         </button>
                       </div>
 
@@ -1420,9 +1402,9 @@ export default function App() {
                           <Hash className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">الرقم الوظيفي</p>
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{t("employeeId")}</p>
                           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
-                            {result.employee_info.id || "غير متوفر"}
+                            {result.employee_info.id || t("notAvailable")}
                           </p>
                         </div>
                       </div>
@@ -1432,9 +1414,9 @@ export default function App() {
                           <Briefcase className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">المسمى الوظيفي</p>
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{t("jobTitle")}</p>
                           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
-                            {result.employee_info.role || "غير متوفر"}
+                            {result.employee_info.role || t("notAvailable")}
                           </p>
                         </div>
                       </div>
@@ -1444,7 +1426,7 @@ export default function App() {
                           <Clock className="h-4 w-4" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">فترة الدوام</p>
+                          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{t("workPeriod")}</p>
                           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
                             {officialStartTime} — {officialEndTime}
                           </p>
@@ -1463,7 +1445,7 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">نسبة الالتزام</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("attendanceRate")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-3xl font-black text-slate-700 dark:text-white">
                             {result.kpis.correctAttendancePercentage ?? 100}%
@@ -1475,7 +1457,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>الأيام الخالية من المخالفات</span>
+                      <span>{t("attendanceRateDesc")}</span>
                     </div>
                   </div>
 
@@ -1483,12 +1465,12 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">التأخير والخروج المبكر</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("delayEarlyOut")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
                             {result.kpis.totalDelayMinutes}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">د تأخير</span>
+                              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">د تأخير</span>
                           {result.kpis.totalEarlyOutMinutes ? (
                             <>
                               <span className="text-[10px] text-slate-300 dark:text-slate-600 mx-0.5">/</span>
@@ -1505,7 +1487,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي دقائق التأخر والمغادرة</span>
+                      <span>{t("delayEarlyOutDesc")}</span>
                     </div>
                   </div>
 
@@ -1513,12 +1495,12 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">غياب بدون عذر</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("absences")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
                             {result.kpis.totalAbsences}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("days")}</span>
                         </div>
                       </div>
                       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
@@ -1526,7 +1508,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>أيام العمل بدون سجلات حضور</span>
+                      <span>{t("absencesDesc")}</span>
                     </div>
                   </div>
 
@@ -1534,12 +1516,12 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">الإجازات المستهلكة</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("leavesUsed")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                             {result.kpis.totalLeavesUsed}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("days")}</span>
                         </div>
                       </div>
                       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
@@ -1547,7 +1529,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي أيام الإجازات الرسمية</span>
+                      <span>{t("leavesUsedDesc")}</span>
                     </div>
                   </div>
 
@@ -1555,12 +1537,12 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">ساعات العمل الفعلية</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("workHours")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-slate-700 dark:text-white">
                             {result.kpis.totalWorkHours ?? 0}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">ساعة</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("hour")}</span>
                         </div>
                       </div>
                       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
@@ -1568,7 +1550,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>إجمالي ساعات الدوام المحسوبة</span>
+                      <span>{t("workHoursDesc")}</span>
                     </div>
                   </div>
 
@@ -1576,12 +1558,12 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">بصمات مكررة</span>
+                        <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("duplicateFp")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
                           <span className="text-2xl font-black text-slate-700 dark:text-white">
                             {result.kpis.totalDuplicateFingerprintDays ?? 0}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">أيام</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("days")}</span>
                         </div>
                       </div>
                       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
@@ -1589,7 +1571,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-                      <span>حركات دخول أو خروج مكررة</span>
+                      <span>{t("duplicateFpDesc")}</span>
                     </div>
                   </div>
 
@@ -1600,7 +1582,7 @@ export default function App() {
                   <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 print:break-inside-avoid transition-colors">
                     <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
                       <PieChart className="h-4 w-4 text-slate-400" />
-                      <span>توزيع حالات الحضور</span>
+                      <span>{t("attendanceDistribution")}</span>
                     </h3>
                     <div className="h-56 w-full flex items-center justify-center">
                       <ResponsiveContainer width="100%" height="100%">
@@ -1654,15 +1636,15 @@ export default function App() {
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                     <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-slate-400" />
-                      <span>ملخص التأخير والمغادرة</span>
+                      <span>{t("lateSummary")}</span>
                     </h3>
                   </div>
 
                   {(!result.lateDaysSummary || result.lateDaysSummary.length === 0) && (!result.kpis.totalEarlyOutMinutes) ? (
                     <div className="py-6 text-center text-slate-400">
                       <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">سجل ممتاز!</p>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">الموظف ملتزم تماماً بالدخول والخروج ولا توجد أي أيام متأخرة أو مغادرات غير معذورة.</p>
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("perfectRecord")}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{t("perfectRecordDesc")}</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1670,10 +1652,10 @@ export default function App() {
                       <div>
                         <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2.5 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                          أيام التأخير ({result.lateDaysSummary?.length || 0}):
+                          {t("lateDaysCount", { count: result.lateDaysSummary?.length || 0 })}
                         </h4>
                         {!result.lateDaysSummary || result.lateDaysSummary.length === 0 ? (
-                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">لا توجد أيام تأخير.</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">{t("noLate")}</p>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {result.lateDaysSummary.map((item, idx) => (
@@ -1683,7 +1665,7 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                                    دخول: {item.time}
+                                    {t("checkInLabel")} {item.time}
                                   </span>
                                   <span className="font-bold text-amber-600 dark:text-amber-400">
                                     +{item.delayMinutes} د
@@ -1699,10 +1681,10 @@ export default function App() {
                       <div>
                         <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2.5 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                          أيام المغادرة والخروج المبكر:
+                          {t("earlyOutDays")}
                         </h4>
                         {!result.kpis.totalEarlyOutMinutes ? (
-                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">لا توجد مغادرات.</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 italic bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800">{t("noEarlyOut")}</p>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {result.daily_report
@@ -1714,7 +1696,7 @@ export default function App() {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                                      خروج: {day.checkOut}
+                                      {t("checkOutLabel")} {day.checkOut}
                                     </span>
                                     <span className="font-bold text-slate-500 dark:text-slate-400">
                                       -{day.earlyOutMinutes} د
@@ -1735,14 +1717,14 @@ export default function App() {
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                       <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
                         <Fingerprint className="h-4 w-4 text-slate-400" />
-                        <span>بصمات مكررة ({result.duplicateFingerprintsSummary.length} أيام)</span>
+                        <span>{t("duplicateFpDays", { count: result.duplicateFingerprintsSummary.length })}</span>
                       </h3>
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded">
-                        تنبيه
+                        {t("alertBadge")}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                      تم اكتشاف حركات دخول أو خروج مكررة في بعض الأيام.
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                        {t("duplicateFpDesc2")}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {result.duplicateFingerprintsSummary.map((item, idx) => (
@@ -1768,9 +1750,9 @@ export default function App() {
                     <div>
                       <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
                         <TrendingUp className="h-4 w-4 text-slate-400" />
-                        <span>منحنى التأخير والخروج المبكر</span>
+                        <span>{t("chartTitle")}</span>
                       </h3>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">دقائق التأخير والمغادرة غير المعذورة</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("chartDesc")}</p>
                     </div>
                   </div>
 
@@ -1855,7 +1837,7 @@ export default function App() {
                 {showRawJson && (
                   <div className="bg-slate-900 text-slate-200 p-5 rounded-2xl border border-slate-800 shadow-lg overflow-x-auto font-mono text-xs space-y-2 print:hidden animate-fade-in-down">
                     <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-                      <span className="text-slate-400">البيانات المستخرجة الخام (JSON Schema)</span>
+                      <span className="text-slate-400">{t("extractedDataJson")}</span>
                       <button 
                         onClick={() => {
                           const blob = new Blob([JSON.stringify(result.extracted_data, null, 2)], {type: "application/json"});
@@ -1867,7 +1849,7 @@ export default function App() {
                         }}
                         className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-2.5 py-1 rounded-md"
                       >
-                        تحميل ملف JSON
+                        {t("downloadJson")}
                       </button>
                     </div>
                     <pre className="max-h-60 overflow-y-auto leading-relaxed tab-size-2">
@@ -1883,10 +1865,10 @@ export default function App() {
                     <div>
                       <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
                         <FileText className="h-4 w-4 text-slate-400" />
-                        <span>السجل التفصيلي</span>
+                        <span>{t("detailedReport")}</span>
                       </h3>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        جدول الأيام مع التحليل التفصيلي
+                        {t("reportSubtitle")}
                       </p>
                     </div>
 
@@ -1900,7 +1882,7 @@ export default function App() {
                             : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        الكل ({result.daily_report.length})
+                        {t("all")} ({result.daily_report.length})
                       </button>
                       <button
                         onClick={() => setFilter("violations")}
@@ -1910,7 +1892,7 @@ export default function App() {
                             : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        مخالفات ({result.daily_report.filter(r => r.statusStyle === 'danger' || r.delayMinutes > 0 || r.status.includes('غياب')).length})
+                        {t("violations")} ({result.daily_report.filter(r => r.statusStyle === 'danger' || r.delayMinutes > 0 || r.status.includes('غياب')).length})
                       </button>
                       <button
                         onClick={() => setFilter("leaves")}
@@ -1920,7 +1902,7 @@ export default function App() {
                             : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        إجازات ({result.daily_report.filter(r => r.statusStyle === 'warning' || r.status.includes('إجازة') || r.status.includes('مغادرة')).length})
+                        {t("leavesFilter")} ({result.daily_report.filter(r => r.statusStyle === 'warning' || r.status.includes('إجازة') || r.status.includes('مغادرة')).length})
                       </button>
                       <button
                         onClick={() => setFilter("regular")}
@@ -1930,7 +1912,7 @@ export default function App() {
                             : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
                         }`}
                       >
-                        منتظرون ({result.daily_report.filter(r => r.statusStyle === 'success' || r.status.includes('منتظم')).length})
+                        {t("regular")} ({result.daily_report.filter(r => r.statusStyle === 'success' || r.status.includes('منتظم')).length})
                       </button>
                     </div>
 
@@ -1941,13 +1923,13 @@ export default function App() {
                     <table className="w-full text-right border-collapse" role="table" aria-label="تقرير السجل التفصيلي للحضور والانصراف">
                       <thead>
                         <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-[11px] font-bold text-slate-400 dark:text-slate-500">
-                          <th className="py-3.5 px-4 font-semibold">اليوم والتاريخ</th>
-                          <th className="py-3.5 px-4 font-semibold">وقت الدخول</th>
-                          <th className="py-3.5 px-4 font-semibold">وقت الخروج</th>
-                          <th className="py-3.5 px-4 font-semibold">ساعات العمل</th>
-                          <th className="py-3.5 px-4 font-semibold">حالة الالتزام</th>
-                          <th className="py-3.5 px-4 font-semibold">ملاحظات التحليل</th>
-                          <th className="py-3.5 px-4 font-semibold text-center print:hidden">تعديل</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableDayDate")}</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableCheckIn")}</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableCheckOut")}</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableWorkHours")}</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableStatus")}</th>
+                          <th className="py-3.5 px-4 font-semibold">{t("tableNotes")}</th>
+                          <th className="py-3.5 px-4 font-semibold text-center print:hidden">{t("tableEdit")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
@@ -1955,7 +1937,7 @@ export default function App() {
                           <tr>
                             <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500 text-xs">
                               <HelpCircle className="h-8 w-8 mx-auto mb-2 opacity-30 text-slate-400" />
-                              لا توجد أيام مطابقة للفلتر المحدد.
+                              {t("tableNoData")}
                             </td>
                           </tr>
                         ) : (
@@ -2184,8 +2166,8 @@ export default function App() {
 
                   {/* Table Footer Stats Summary */}
                   <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between text-[11px] text-slate-400 dark:text-slate-500 gap-2">
-                    <span>جميع البيانات خاضعة لعملية توحيد الأرقام.</span>
-                    <span>إجمالي الأيام: {filteredDailyReport.length} يوم</span>
+                    <span>{t("tableFooter")}</span>
+                    <span>{t("tableTotalDays", { count: filteredDailyReport.length })}</span>
                   </div>
 
                 </div>
@@ -2234,7 +2216,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden">
         <div className="max-w-7xl mx-auto px-4">
-          <p>محلل كشوفات الدوام © {new Date().getFullYear()}</p>
+          <p>{t("footerCopyright")} © {new Date().getFullYear()}</p>
           <p className="mt-1 font-bold text-slate-500 dark:text-slate-400">YAZEED AL-ARAISHA</p>
         </div>
       </footer>
@@ -2246,19 +2228,19 @@ export default function App() {
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Shield className="h-4 w-4 text-amber-600" />
-                <span>دخول المدير</span>
+                <span>{t("adminLogin")}</span>
               </h3>
               <button onClick={() => setShowAdminLogin(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">أدخل باسورد المدير للحصول على صلاحيات كاملة</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t("adminLoginDesc")}</p>
             <input
               type="password"
               value={adminPasswordInput}
               onChange={(e) => setAdminPasswordInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleAdminLogin(); }}
-              placeholder="باسورد المدير"
+              placeholder={t("adminPasswordPlaceholder")}
               autoFocus
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
             />
@@ -2270,12 +2252,12 @@ export default function App() {
             <div className="flex gap-2">
               <button onClick={() => { setShowAdminLogin(false); setAdminPasswordInput(""); setAdminLoginError(null); }}
                 className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
-                إلغاء
+                {t("cancelBtn")}
               </button>
               <button onClick={handleAdminLogin} disabled={!adminPasswordInput}
                 className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${!adminPasswordInput ? "opacity-50 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700"}`}>
                 <LogIn className="h-4 w-4" />
-                دخول
+                {t("login")}
               </button>
             </div>
           </div>
