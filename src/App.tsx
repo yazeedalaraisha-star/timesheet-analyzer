@@ -280,12 +280,36 @@ export default function App() {
   const handleCompareSchedule = () => {
     if (!result || schedules.length === 0) return;
 
+    let effectiveResult = result;
+    if (!scheduleTimesUsed) {
+      const matched = findEmployeeScheduleByName(schedules, result.employee_info.name);
+      if (matched) {
+        const overrides = buildScheduleTimeOverrides(matched, shiftDefs);
+        if (Object.keys(overrides).length > 0) {
+          effectiveResult = processAttendanceData(result.extracted_data, officialStartTime, officialEndTime, overrides);
+          setResult(effectiveResult);
+          setScheduleTimesUsed(true);
+          setMatchedScheduleName(matched.employeeName);
+        }
+      }
+    }
+
     if (multiResults.length > 1) {
       const allViolations: ScheduleViolation[] = [];
       let anyNotFound = false;
       let lastNotFoundName = "";
       for (const mr of multiResults) {
-        const cr = compareScheduleToFingerprint(schedules, mr, shiftDefs);
+        let empResult = mr;
+        if (!scheduleTimesUsed) {
+          const matched = findEmployeeScheduleByName(schedules, mr.employee_info.name);
+          if (matched) {
+            const overrides = buildScheduleTimeOverrides(matched, shiftDefs);
+            if (Object.keys(overrides).length > 0) {
+              empResult = processAttendanceData(mr.extracted_data, officialStartTime, officialEndTime, overrides);
+            }
+          }
+        }
+        const cr = compareScheduleToFingerprint(schedules, empResult, shiftDefs);
         allViolations.push(...cr.violations);
         if (cr.employeeNotFound) {
           anyNotFound = true;
@@ -295,7 +319,7 @@ export default function App() {
       setScheduleViolations(allViolations.sort((a, b) => a.date.localeCompare(b.date)));
       setScheduleNotFoundName(anyNotFound ? lastNotFoundName : null);
     } else {
-      const comparisonResult = compareScheduleToFingerprint(schedules, result, shiftDefs);
+      const comparisonResult = compareScheduleToFingerprint(schedules, effectiveResult, shiftDefs);
       setScheduleViolations(comparisonResult.violations);
       setScheduleNotFoundName(comparisonResult.employeeNotFound ? comparisonResult.searchedName : null);
     }
@@ -337,6 +361,22 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Re-apply schedule times when schedules finish loading from DB (after analysis)
+  useEffect(() => {
+    if (!result || schedules.length === 0) return;
+
+    const matched = findEmployeeScheduleByName(schedules, result.employee_info.name);
+    if (!matched) return;
+
+    const overrides = buildScheduleTimeOverrides(matched, shiftDefs);
+    if (Object.keys(overrides).length === 0) return;
+
+    const newResult = processAttendanceData(result.extracted_data, officialStartTime, officialEndTime, overrides);
+    setResult(newResult);
+    setScheduleTimesUsed(true);
+    setMatchedScheduleName(matched.employeeName);
+  }, [schedules]);
 
   // Save history helper (localStorage)
   const saveToHistory = (newResult: TimesheetAnalysisResult) => {
@@ -1507,6 +1547,19 @@ export default function App() {
                     </div>
 
                   </div>
+                </div>
+
+                {/* Debug Panel: Schedule Matching Info */}
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-700/40 p-4 text-[10px] font-mono text-slate-500 dark:text-slate-400 space-y-1">
+                  <p className="font-bold text-slate-600 dark:text-slate-300 text-[11px]">DEBUG: معلومات المطابقة</p>
+                  <p>عدد الجداول المحملة: {schedules.length}</p>
+                  <p>اسم الموظف بالكشف: "{result.employee_info.name}"</p>
+                  {schedules.length > 0 && (
+                    <p>أسماء بالجدول: {schedules.slice(0, 10).map((s) => `"${s.employeeName}"`).join(", ")}{schedules.length > 10 ? ` ... (${schedules.length})` : ""}</p>
+                  )}
+                  <p>نتيجة المطابقة: {scheduleTimesUsed ? `✓ تم (${matchedScheduleName})` : matchedScheduleName ? `✗ لم يتطابق` : "? ما تم البحث"}</p>
+                  <p>الأوقات الأصلية: {officialStartTime} - {officialEndTime}</p>
+                  {scheduleTimesUsed && <p className="text-emerald-600 dark:text-emerald-400 font-bold">تم إعادة المعالجة بأوقات الجدول</p>}
                 </div>
 
                 {/* KPIs Dashboard */}
