@@ -68,8 +68,20 @@ export function buildScheduleTimeOverrides(
 ): Record<string, { startTime: string; endTime: string }> {
   const overrides: Record<string, { startTime: string; endTime: string }> = {};
 
+  const hasCustomTimes = employeeSchedule.customStartTime && employeeSchedule.customEndTime;
+
   for (const day of employeeSchedule.days) {
-    if (day.isOff || day.shifts.length === 0 || day.leaveType) continue;
+    if (day.isOff || day.leaveType) continue;
+
+    if (hasCustomTimes) {
+      overrides[day.date] = {
+        startTime: employeeSchedule.customStartTime!,
+        endTime: employeeSchedule.customEndTime!,
+      };
+      continue;
+    }
+
+    if (day.shifts.length === 0) continue;
 
     const firstShift = shiftDefs[day.shifts[0]];
     const lastShift = shiftDefs[day.shifts[day.shifts.length - 1]];

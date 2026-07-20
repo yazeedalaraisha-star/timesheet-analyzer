@@ -149,6 +149,8 @@ export interface EmployeeSchedule {
   employeeName: string;
   department: string;
   days: DaySchedule[];
+  customStartTime?: string;
+  customEndTime?: string;
 }
 
 export interface ScheduleViolation {

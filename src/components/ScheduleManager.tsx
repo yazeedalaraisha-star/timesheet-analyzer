@@ -1011,9 +1011,34 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap text-[11px]">{emp.employeeName}</span>
                           {emp.employeeName !== "—" && (
-                            <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title={t("deleteBtn")}>
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="time"
+                                value={emp.customStartTime || ""}
+                                onChange={(e) => {
+                                  onUpdate(schedules.map((s) =>
+                                    s.id === emp.id ? { ...s, customStartTime: e.target.value || undefined } : s
+                                  ));
+                                }}
+                                className="w-[60px] text-[9px] px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                title={t("customStartTime")}
+                              />
+                              <span className="text-[9px] text-slate-400">-</span>
+                              <input
+                                type="time"
+                                value={emp.customEndTime || ""}
+                                onChange={(e) => {
+                                  onUpdate(schedules.map((s) =>
+                                    s.id === emp.id ? { ...s, customEndTime: e.target.value || undefined } : s
+                                  ));
+                                }}
+                                className="w-[60px] text-[9px] px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                title={t("customEndTime")}
+                              />
+                              <button onClick={() => handleDelete(emp.id)} className="text-slate-300 hover:text-red-500 transition-all" title={t("deleteBtn")}>
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
