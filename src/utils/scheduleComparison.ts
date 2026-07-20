@@ -24,19 +24,36 @@ function normalizeToYYYYMMDDFromSlash(slashDate: string): string {
   return slashDate;
 }
 
-function getFirstSegments(name: string, count: number = 2): string {
-  const segments = name.trim().split(/\s+/);
-  return segments.slice(0, count).join(" ").toLowerCase();
+function getMeaningfulParts(name: string): string[] {
+  const connectors = ["بن", "بنت", "ابن", "أبو", "أبا", "أم", "آل", "أولاد"];
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter((w) => !connectors.includes(w.toLowerCase()))
+    .map((w) => w.toLowerCase());
 }
 
 export function findEmployeeScheduleByName(
   schedules: EmployeeSchedule[],
   fingerprintName: string
 ): EmployeeSchedule | null {
-  const fpSegments = getFirstSegments(fingerprintName, 2);
+  const fpParts = getMeaningfulParts(fingerprintName);
+  if (fpParts.length === 0) return null;
+
   return schedules.find((s) => {
-    const schedSegments = getFirstSegments(s.employeeName, 2);
-    return fpSegments === schedSegments;
+    const schedParts = getMeaningfulParts(s.employeeName);
+    if (schedParts.length === 0) return false;
+
+    const firstNameMatch = fpParts[0] === schedParts[0];
+    if (!firstNameMatch) return false;
+
+    if (schedParts.length >= 2 && fpParts.length >= 2) {
+      const secondNameMatch = fpParts[1] === schedParts[1];
+      const lastNameMatch = fpParts[fpParts.length - 1] === schedParts[schedParts.length - 1];
+      return secondNameMatch || lastNameMatch;
+    }
+
+    return true;
   }) || null;
 }
 
