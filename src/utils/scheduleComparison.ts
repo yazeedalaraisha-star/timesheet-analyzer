@@ -24,11 +24,17 @@ function normalizeToYYYYMMDDFromSlash(slashDate: string): string {
   return slashDate;
 }
 
+export interface ComparisonResult {
+  violations: ScheduleViolation[];
+  employeeNotFound: boolean;
+  searchedName: string;
+}
+
 export function compareScheduleToFingerprint(
   schedules: EmployeeSchedule[],
   result: TimesheetAnalysisResult,
   shiftDefs: Record<string, Shift>
-): ScheduleViolation[] {
+): ComparisonResult {
   const violations: ScheduleViolation[] = [];
   const empName = result.employee_info.name;
 
@@ -36,7 +42,9 @@ export function compareScheduleToFingerprint(
     (s) => s.employeeName.trim() === empName.trim()
   );
 
-  if (!employeeSchedule) return violations;
+  if (!employeeSchedule) {
+    return { violations: [], employeeNotFound: true, searchedName: empName };
+  }
 
   const dailyReport = result.daily_report || [];
 
@@ -140,5 +148,5 @@ export function compareScheduleToFingerprint(
     }
   }
 
-  return violations.sort((a, b) => a.date.localeCompare(b.date));
+  return { violations: violations.sort((a, b) => a.date.localeCompare(b.date)), employeeNotFound: false, searchedName: empName };
 }

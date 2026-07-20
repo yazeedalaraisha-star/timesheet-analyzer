@@ -265,6 +265,7 @@ export default function App() {
   // Schedule comparison violations
   const [scheduleViolations, setScheduleViolations] = useState<ScheduleViolation[]>([]);
   const [showScheduleComparison, setShowScheduleComparison] = useState<boolean>(false);
+  const [scheduleNotFoundName, setScheduleNotFoundName] = useState<string | null>(null);
 
   const handleUpdateSchedules = (newSchedules: EmployeeSchedule[]) => {
     setSchedules(newSchedules);
@@ -275,8 +276,9 @@ export default function App() {
   // Schedule comparison handler
   const handleCompareSchedule = () => {
     if (!result || schedules.length === 0) return;
-    const violations = compareScheduleToFingerprint(schedules, result, shiftDefs);
-    setScheduleViolations(violations);
+    const comparisonResult = compareScheduleToFingerprint(schedules, result, shiftDefs);
+    setScheduleViolations(comparisonResult.violations);
+    setScheduleNotFoundName(comparisonResult.employeeNotFound ? comparisonResult.searchedName : null);
     setShowScheduleComparison(true);
   };
 
@@ -1629,7 +1631,17 @@ export default function App() {
                           {t("scheduleComparisonDesc")}
                         </p>
 
-                        {scheduleViolations.length === 0 ? (
+                        {scheduleNotFoundName ? (
+                          <div className="py-6 text-center">
+                            <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {t("scheduleNotFound", { name: scheduleNotFoundName })}
+                            </p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                              {t("scheduleNotFoundHint")}
+                            </p>
+                          </div>
+                        ) : scheduleViolations.length === 0 ? (
                           <div className="py-6 text-center">
                             <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
                             <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("noViolations")}</p>

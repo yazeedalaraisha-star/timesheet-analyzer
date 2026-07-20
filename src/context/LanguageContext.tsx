@@ -508,6 +508,8 @@ const translations: Record<Lang, Record<string, string>> = {
     actualTime: "الفعلي: {time}",
     delayMinutes: "تأخير {minutes} دقيقة",
     compareScheduleBtn: "مقارنة الجدول بالبصمات",
+    scheduleNotFound: "الاسم \"{name}\" غير موجود في جدول الدوام",
+    scheduleNotFoundHint: "تأكد من أن اسم الموظف في كشف الدوام مطابق للمسجل في جدول الدوام",
   },
 
   en: {
@@ -987,6 +989,8 @@ const translations: Record<Lang, Record<string, string>> = {
     actualTime: "Actual: {time}",
     delayMinutes: "{minutes} minutes late",
     compareScheduleBtn: "Compare Schedule vs Fingerprints",
+    scheduleNotFound: "Employee \"{name}\" not found in schedule",
+    scheduleNotFoundHint: "Make sure the employee name in the timesheet matches the schedule records",
   },
 };
 
