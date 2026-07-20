@@ -9,27 +9,13 @@ function normalizeToYYYYMMDD(displayDate: string): string {
   return displayDate;
 }
 
-function normalizeToYYYYMMDDFromSlash(slashDate: string): string {
-  const parts = slashDate.split("/");
-  if (parts.length === 3) {
-    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
-  }
-  const dashParts = slashDate.split("-");
-  if (dashParts.length === 3) {
-    if (dashParts[0].length === 2) {
-      return `${dashParts[2]}-${dashParts[1]}-${dashParts[0]}`;
-    }
-    return slashDate;
-  }
-  return slashDate;
-}
+const NAME_CONNECTORS = ["بن", "بنت", "ابن", "أبو", "أبا", "أم", "آل", "أولاد"];
 
 function getMeaningfulParts(name: string): string[] {
-  const connectors = ["بن", "بنت", "ابن", "أبو", "أبا", "أم", "آل", "أولاد"];
   return name
     .trim()
     .split(/\s+/)
-    .filter((w) => !connectors.includes(w.toLowerCase()))
+    .filter((w) => !NAME_CONNECTORS.includes(w.toLowerCase()))
     .map((w) => w.toLowerCase());
 }
 
@@ -40,21 +26,40 @@ export function findEmployeeScheduleByName(
   const fpParts = getMeaningfulParts(fingerprintName);
   if (fpParts.length === 0) return null;
 
-  return schedules.find((s) => {
+  const candidates: EmployeeSchedule[] = [];
+
+  for (const s of schedules) {
     const schedParts = getMeaningfulParts(s.employeeName);
-    if (schedParts.length === 0) return false;
+    if (schedParts.length === 0) continue;
 
     const firstNameMatch = fpParts[0] === schedParts[0];
-    if (!firstNameMatch) return false;
+    if (!firstNameMatch) continue;
 
     if (schedParts.length >= 2 && fpParts.length >= 2) {
       const secondNameMatch = fpParts[1] === schedParts[1];
       const lastNameMatch = fpParts[fpParts.length - 1] === schedParts[schedParts.length - 1];
-      return secondNameMatch || lastNameMatch;
+      if (secondNameMatch || lastNameMatch) {
+        candidates.push(s);
+      }
+    } else if (schedParts.length === 1 && fpParts.length === 1) {
+      candidates.push(s);
     }
+  }
 
-    return true;
-  }) || null;
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  let bestMatch = candidates[0];
+  let bestScore = 0;
+  for (const c of candidates) {
+    const cParts = getMeaningfulParts(c.employeeName);
+    const score = cParts.length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = c;
+    }
+  }
+  return bestMatch;
 }
 
 export function buildScheduleTimeOverrides(
@@ -108,7 +113,10 @@ export function compareScheduleToFingerprint(
     reportByDate.set(key, row);
   }
 
-  for (const day of employeeSchedule.days) {
+  const reportDates = new Set(reportByDate.keys());
+  const scheduleDatesInRange = employeeSchedule.days.filter((d) => reportDates.has(d.date));
+
+  for (const day of scheduleDatesInRange) {
     const schedDate = day.date;
     const reportRow = reportByDate.get(schedDate);
 

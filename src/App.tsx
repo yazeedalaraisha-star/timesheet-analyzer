@@ -268,6 +268,7 @@ export default function App() {
   const [showScheduleComparison, setShowScheduleComparison] = useState<boolean>(false);
   const [scheduleNotFoundName, setScheduleNotFoundName] = useState<string | null>(null);
   const [scheduleTimesUsed, setScheduleTimesUsed] = useState<boolean>(false);
+  const [matchedScheduleName, setMatchedScheduleName] = useState<string | null>(null);
 
   const handleUpdateSchedules = (newSchedules: EmployeeSchedule[]) => {
     setSchedules(newSchedules);
@@ -278,9 +279,26 @@ export default function App() {
   // Schedule comparison handler
   const handleCompareSchedule = () => {
     if (!result || schedules.length === 0) return;
-    const comparisonResult = compareScheduleToFingerprint(schedules, result, shiftDefs);
-    setScheduleViolations(comparisonResult.violations);
-    setScheduleNotFoundName(comparisonResult.employeeNotFound ? comparisonResult.searchedName : null);
+
+    if (multiResults.length > 1) {
+      const allViolations: ScheduleViolation[] = [];
+      let anyNotFound = false;
+      let lastNotFoundName = "";
+      for (const mr of multiResults) {
+        const cr = compareScheduleToFingerprint(schedules, mr, shiftDefs);
+        allViolations.push(...cr.violations);
+        if (cr.employeeNotFound) {
+          anyNotFound = true;
+          lastNotFoundName = cr.searchedName;
+        }
+      }
+      setScheduleViolations(allViolations.sort((a, b) => a.date.localeCompare(b.date)));
+      setScheduleNotFoundName(anyNotFound ? lastNotFoundName : null);
+    } else {
+      const comparisonResult = compareScheduleToFingerprint(schedules, result, shiftDefs);
+      setScheduleViolations(comparisonResult.violations);
+      setScheduleNotFoundName(comparisonResult.employeeNotFound ? comparisonResult.searchedName : null);
+    }
     setShowScheduleComparison(true);
   };
 
@@ -471,6 +489,7 @@ export default function App() {
     setResult(null);
     setMultiResults([]);
     setScheduleTimesUsed(false);
+    setMatchedScheduleName(null);
     setShowScheduleComparison(false);
     setProgressMessage("جاري الاتصال بالخادم...");
 
@@ -534,27 +553,30 @@ export default function App() {
         }
       }
 
-      const applyScheduleTimes = (r: TimesheetAnalysisResult): { result: TimesheetAnalysisResult; usedSchedule: boolean } => {
+      const applyScheduleTimes = (r: TimesheetAnalysisResult): { result: TimesheetAnalysisResult; usedSchedule: boolean; matchedName: string | null } => {
         const matched = findEmployeeScheduleByName(schedules, r.employee_info.name);
-        if (!matched) return { result: r, usedSchedule: false };
+        if (!matched) return { result: r, usedSchedule: false, matchedName: null };
         const overrides = buildScheduleTimeOverrides(matched, shiftDefs);
-        if (Object.keys(overrides).length === 0) return { result: r, usedSchedule: false };
-        return { result: processAttendanceData(r.extracted_data, officialStartTime, officialEndTime, overrides), usedSchedule: true };
+        if (Object.keys(overrides).length === 0) return { result: r, usedSchedule: false, matchedName: matched.employeeName };
+        return { result: processAttendanceData(r.extracted_data, officialStartTime, officialEndTime, overrides), usedSchedule: true, matchedName: matched.employeeName };
       };
 
       if (allResults.length === 1) {
-        const { result: processed, usedSchedule } = applyScheduleTimes(allResults[0]);
+        const { result: processed, usedSchedule, matchedName } = applyScheduleTimes(allResults[0]);
         setResult(processed);
         setScheduleTimesUsed(usedSchedule);
+        setMatchedScheduleName(matchedName);
         saveToHistory(processed);
       } else if (allResults.length > 1) {
         const processedItems = allResults.map(applyScheduleTimes);
         const usedSchedule = processedItems.some((p) => p.usedSchedule);
+        const lastMatched = processedItems.find((p) => p.matchedName)?.matchedName || null;
         const processed = processedItems.map((p) => p.result);
         setMultiResults(processed);
         const merged = mergeResults(processed);
         setResult(merged);
         setScheduleTimesUsed(usedSchedule);
+        setMatchedScheduleName(lastMatched);
         saveToHistory(merged);
       }
       setProgressMessage(null);
@@ -1473,10 +1495,10 @@ export default function App() {
                           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
                             {officialStartTime} — {officialEndTime}
                           </p>
-                          {scheduleTimesUsed && (
+                          {scheduleTimesUsed && matchedScheduleName && (
                             <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/60">
                               <Calendar className="h-2.5 w-2.5" />
-                              {t("scheduleTimesUsed")}
+                              {t("scheduleTimesUsed")} — {matchedScheduleName}
                             </span>
                           )}
                         </div>
