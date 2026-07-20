@@ -51,6 +51,8 @@ function getArabicDayName(date: Date): string {
   return days[date.getDay()];
 }
 
+export const GRACE_PERIOD_MINUTES = 10;
+
 export function processAttendanceData(
   rawExtracted: any,
   officialStartTime: string,
@@ -262,18 +264,24 @@ export function processAttendanceData(
             delayMsg = "تأخير معذور بمغادرة";
             note += `مغادرة رسمية من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
           } else {
-            delayMinutes = Math.ceil((checkInSec - officialStartSec) / 60);
-            totalDelayMinutes += delayMinutes;
-            delayMsg = `تأخير ${delayMinutes} دقيقة`;
-            hasViolation = true;
-            note += "تأخير غير معذور. ";
+            const actualDelayMins = Math.ceil((checkInSec - officialStartSec) / 60);
+            if (actualDelayMins <= GRACE_PERIOD_MINUTES) {
+              delayMsg = `دخول بعد الدوام ${actualDelayMins} د (ضمن فترة السماح)`;
+              note += `دخول بعد الدوام ${actualDelayMins} دقيقة (ضمن فترة السماح ${GRACE_PERIOD_MINUTES} دقائق). `;
+            } else {
+              delayMinutes = actualDelayMins - GRACE_PERIOD_MINUTES;
+              totalDelayMinutes += delayMinutes;
+              delayMsg = `تأخير ${delayMinutes} دقيقة`;
+              hasViolation = true;
+              note += `تأخير ${actualDelayMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${delayMinutes} دقيقة مخالفة. `;
 
-            lateDaysSummary.push({
-              date: formatDateDisplay(currentDate),
-              dayName: dayArabic,
-              delayMinutes,
-              time: checkInTime
-            });
+              lateDaysSummary.push({
+                date: formatDateDisplay(currentDate),
+                dayName: dayArabic,
+                delayMinutes,
+                time: checkInTime
+              });
+            }
           }
         }
       } else {
@@ -307,10 +315,15 @@ export function processAttendanceData(
           if (excusedByPermission) {
             note += `مغادرة خروج من ${coveringPermission.start_time} إلى ${coveringPermission.end_time}. `;
           } else {
-            earlyOutMinutes = Math.ceil((officialEndSec - checkOutSec) / 60);
-            totalEarlyOutMinutes += earlyOutMinutes;
-            hasViolation = true;
-            note += `خرج مبكراً بـ ${earlyOutMinutes} دقيقة. `;
+            const actualEarlyMins = Math.ceil((officialEndSec - checkOutSec) / 60);
+            if (actualEarlyMins <= GRACE_PERIOD_MINUTES) {
+              note += `خروج قبل الدوام ${actualEarlyMins} دقيقة (ضمن فترة السماح ${GRACE_PERIOD_MINUTES} دقائق). `;
+            } else {
+              earlyOutMinutes = actualEarlyMins - GRACE_PERIOD_MINUTES;
+              totalEarlyOutMinutes += earlyOutMinutes;
+              hasViolation = true;
+              note += `خروج ${actualEarlyMins} دقيقة قبل النهاية (${GRACE_PERIOD_MINUTES} سماح) = ${earlyOutMinutes} دقيقة مخالفة. `;
+            }
           }
         }
       } else {

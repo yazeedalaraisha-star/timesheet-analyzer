@@ -1,5 +1,6 @@
 import { EmployeeSchedule, DailyReportRow, ScheduleViolation, TimesheetAnalysisResult, Shift } from "../types";
 import { parseTimeToSeconds } from "./timeUtils";
+import { GRACE_PERIOD_MINUTES } from "../analysis";
 
 function normalizeToYYYYMMDD(displayDate: string): string {
   const parts = displayDate.split("-");
@@ -178,34 +179,40 @@ export function compareScheduleToFingerprint(
       if (reportRow.checkIn && expectedStartSec !== null) {
         const checkInSec = parseTimeToSeconds(reportRow.checkIn);
         if (checkInSec !== null && checkInSec > expectedStartSec) {
-          const delayMins = Math.ceil((checkInSec - expectedStartSec) / 60);
-          violations.push({
-            employeeName: empName,
-            date: schedDate,
-            dayName: day.dayName,
-            type: "late_arrival",
-            expectedTime: firstShift.startTime,
-            actualTime: reportRow.checkIn,
-            delayMinutes: delayMins,
-            details: `تأخير ${delayMins} دقيقة عن موعد نوبت ${day.shifts[0]} (${firstShift.startTime})`,
-          });
+          const actualDelayMins = Math.ceil((checkInSec - expectedStartSec) / 60);
+          if (actualDelayMins > GRACE_PERIOD_MINUTES) {
+            const delayMins = actualDelayMins - GRACE_PERIOD_MINUTES;
+            violations.push({
+              employeeName: empName,
+              date: schedDate,
+              dayName: day.dayName,
+              type: "late_arrival",
+              expectedTime: firstShift.startTime,
+              actualTime: reportRow.checkIn,
+              delayMinutes: delayMins,
+              details: `تأخير ${actualDelayMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${delayMins} دقيقة مخالفة`,
+            });
+          }
         }
       }
 
       if (reportRow.checkOut && expectedEndSec !== null) {
         const checkOutSec = parseTimeToSeconds(reportRow.checkOut);
         if (checkOutSec !== null && checkOutSec < expectedEndSec) {
-          const earlyMins = Math.ceil((expectedEndSec - checkOutSec) / 60);
-          violations.push({
-            employeeName: empName,
-            date: schedDate,
-            dayName: day.dayName,
-            type: "early_departure",
-            expectedTime: lastShift?.endTime,
-            actualTime: reportRow.checkOut,
-            delayMinutes: earlyMins,
-            details: `خروج مبكر ${earlyMins} دقيقة قبل موعد نهاية نوبت ${day.shifts[day.shifts.length - 1]} (${lastShift?.endTime})`,
-          });
+          const actualEarlyMins = Math.ceil((expectedEndSec - checkOutSec) / 60);
+          if (actualEarlyMins > GRACE_PERIOD_MINUTES) {
+            const earlyMins = actualEarlyMins - GRACE_PERIOD_MINUTES;
+            violations.push({
+              employeeName: empName,
+              date: schedDate,
+              dayName: day.dayName,
+              type: "early_departure",
+              expectedTime: lastShift?.endTime,
+              actualTime: reportRow.checkOut,
+              delayMinutes: earlyMins,
+              details: `خروج مبكر ${actualEarlyMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${earlyMins} دقيقة مخالفة`,
+            });
+          }
         }
       }
 

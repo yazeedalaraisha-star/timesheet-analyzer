@@ -34,7 +34,7 @@ import {
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule, ScheduleViolation, DEFAULT_SHIFT_DEFINITIONS, Shift } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
 import { compareScheduleToFingerprint, findEmployeeScheduleByName, buildScheduleTimeOverrides } from "./utils/scheduleComparison";
-import { processAttendanceData } from "./analysis";
+import { processAttendanceData, GRACE_PERIOD_MINUTES } from "./analysis";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -800,12 +800,17 @@ export default function App() {
               statusStyle = "warning";
               note += `مغادرة رسمية معتمدة. `;
             } else {
-              delayMinutes = Math.ceil((checkInSec - officialStartSec) / 60);
-              totalDelayMinutes += delayMinutes;
-              statusText = `تأخير ${delayMinutes} دقيقة`;
-              statusStyle = "danger";
-              hasViolation = true;
-              note += "تأخير غير معذور. ";
+              const actualDelayMins = Math.ceil((checkInSec - officialStartSec) / 60);
+              if (actualDelayMins <= GRACE_PERIOD_MINUTES) {
+                note = `دخول بعد الدوام ${actualDelayMins} دقيقة (ضمن فترة السماح)`;
+              } else {
+                delayMinutes = actualDelayMins - GRACE_PERIOD_MINUTES;
+                totalDelayMinutes += delayMinutes;
+                statusText = `تأخير ${delayMinutes} دقيقة`;
+                statusStyle = "danger";
+                hasViolation = true;
+                note += `تأخير ${actualDelayMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${delayMinutes} دقيقة مخالفة. `;
+              }
             }
           }
         } else {
@@ -819,16 +824,21 @@ export default function App() {
         if (checkOutTime) {
           const checkOutSec = parseTimeToSeconds(checkOutTime);
           if (checkOutSec !== null && checkOutSec < officialEndSec) {
-            earlyOutMinutes = Math.ceil((officialEndSec - checkOutSec) / 60);
-            totalEarlyOutMinutes += earlyOutMinutes;
-            if (statusText === "منتظم" || statusText === "حضور منتظم") {
-              statusText = `خروج مبكر ${earlyOutMinutes} دقيقة`;
-              statusStyle = "danger";
+            const actualEarlyMins = Math.ceil((officialEndSec - checkOutSec) / 60);
+            if (actualEarlyMins <= GRACE_PERIOD_MINUTES) {
+              note += `خروج قبل الدوام ${actualEarlyMins} دقيقة (ضمن فترة السماح). `;
             } else {
-              statusText += ` و خروج مبكر ${earlyOutMinutes} د`;
+              earlyOutMinutes = actualEarlyMins - GRACE_PERIOD_MINUTES;
+              totalEarlyOutMinutes += earlyOutMinutes;
+              if (statusText === "منتظم" || statusText === "حضور منتظم") {
+                statusText = `خروج مبكر ${earlyOutMinutes} دقيقة`;
+                statusStyle = "danger";
+              } else {
+                statusText += ` و خروج مبكر ${earlyOutMinutes} د`;
+              }
+              hasViolation = true;
+              note += `خروج ${actualEarlyMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${earlyOutMinutes} دقيقة مخالفة. `;
             }
-            hasViolation = true;
-            note += "خروج مبكر غير معذور. ";
           }
         } else {
           hasViolation = true;
