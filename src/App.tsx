@@ -31,8 +31,9 @@ import {
   X,
   Shield,
 } from "lucide-react";
-import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule } from "./types";
+import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule, ScheduleViolation, DEFAULT_SHIFT_DEFINITIONS, Shift } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
+import { compareScheduleToFingerprint } from "./utils/scheduleComparison";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -253,10 +254,30 @@ export default function App() {
     } catch { return []; }
   });
 
+  // Shift definitions for schedule comparison
+  const [shiftDefs, setShiftDefs] = useState<Record<string, Shift>>(() => {
+    try {
+      const stored = localStorage.getItem("schedule_shift_definitions");
+      return stored ? JSON.parse(stored) : { ...DEFAULT_SHIFT_DEFINITIONS };
+    } catch { return { ...DEFAULT_SHIFT_DEFINITIONS }; }
+  });
+
+  // Schedule comparison violations
+  const [scheduleViolations, setScheduleViolations] = useState<ScheduleViolation[]>([]);
+  const [showScheduleComparison, setShowScheduleComparison] = useState<boolean>(false);
+
   const handleUpdateSchedules = (newSchedules: EmployeeSchedule[]) => {
     setSchedules(newSchedules);
     try { localStorage.setItem("employee_schedules", JSON.stringify(newSchedules)); } catch {}
     if (dbAvailable) saveSchedulesToDB(newSchedules).catch(() => {});
+  };
+
+  // Schedule comparison handler
+  const handleCompareSchedule = () => {
+    if (!result || schedules.length === 0) return;
+    const violations = compareScheduleToFingerprint(schedules, result, shiftDefs);
+    setScheduleViolations(violations);
+    setShowScheduleComparison(true);
   };
 
   // Load history on mount + check DB status
@@ -1576,6 +1597,101 @@ export default function App() {
                   </div>
 
                 </div>
+
+                {/* Schedule Comparison Button + Violations */}
+                {schedules.length > 0 && (
+                  <div className="space-y-4">
+                    {!showScheduleComparison && (
+                      <button
+                        onClick={handleCompareSchedule}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all"
+                      >
+                        <Calendar className="h-4 w-4" />
+                        {t("compareScheduleBtn")}
+                      </button>
+                    )}
+
+                    {showScheduleComparison && (
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-6 space-y-4 transition-colors">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                          <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-slate-400" />
+                            <span>{t("scheduleComparison")}</span>
+                          </h3>
+                          <button
+                            onClick={() => setShowScheduleComparison(false)}
+                            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all"
+                          >
+                            {t("hideJson")}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                          {t("scheduleComparisonDesc")}
+                        </p>
+
+                        {scheduleViolations.length === 0 ? (
+                          <div className="py-6 text-center">
+                            <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{t("noViolations")}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 px-2.5 py-1 rounded-lg border border-rose-100 dark:border-rose-900/60">
+                                {t("violationsFound", { count: scheduleViolations.length })}
+                              </span>
+                            </div>
+                            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                              {scheduleViolations.map((v, idx) => (
+                                <div
+                                  key={idx}
+                                  className={`flex items-start justify-between p-3 rounded-lg border text-xs ${
+                                    v.type === "absence"
+                                      ? "border-rose-200 dark:border-rose-900/40 bg-rose-50/30 dark:bg-rose-950/10"
+                                      : v.type === "late_arrival"
+                                        ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/10"
+                                        : v.type === "early_departure"
+                                          ? "border-violet-200 dark:border-violet-900/40 bg-violet-50/30 dark:bg-violet-950/10"
+                                          : v.type === "unscheduled"
+                                            ? "border-orange-200 dark:border-orange-900/40 bg-orange-50/30 dark:bg-orange-950/10"
+                                            : "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20"
+                                  }`}
+                                >
+                                  <div className="space-y-1">
+                                    <div className="font-extrabold text-slate-800 dark:text-slate-200">
+                                      {v.dayName} <span className="font-normal text-slate-400 dark:text-slate-500">({v.date})</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{v.details}</p>
+                                    {v.expectedTime && v.actualTime && (
+                                      <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
+                                        <span>{t("expectedTime", { time: v.expectedTime })}</span>
+                                        <span>→</span>
+                                        <span className="font-bold text-slate-600 dark:text-slate-300">{t("actualTime", { time: v.actualTime })}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap ${
+                                    v.type === "absence"
+                                      ? "bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400"
+                                      : v.type === "late_arrival"
+                                        ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
+                                        : v.type === "early_departure"
+                                          ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400"
+                                          : v.type === "unscheduled"
+                                            ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400"
+                                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                                  }`}>
+                                    {v.type === "absence" ? t("violationAbsence") : v.type === "late_arrival" ? t("violationLate") : v.type === "early_departure" ? t("violationEarly") : v.type === "unscheduled" ? t("violationUnscheduled") : t("violationNoCheckout")}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Attendance Breakdown Pie Chart */}
                 {result && (
