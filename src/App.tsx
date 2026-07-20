@@ -1267,15 +1267,13 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleAnalyze}
-                  disabled={loading || !image || !isAdmin}
-                  aria-label="تحليل لقطة الشاشة"
+                  disabled={loading || !image}
+                  aria-label={t("analyze")}
                   aria-busy={loading}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
                     loading 
                       ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
                       : !image 
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        : !isAdmin
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                         : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white active:scale-[0.98]"
                   }`}
@@ -1283,12 +1281,7 @@ export default function App() {
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                      <span>{progressMessage || "جاري المعالجة وقراءة الكشف..."}</span>
-                    </>
-                  ) : !isAdmin ? (
-                    <>
-                      <Eye className="h-4 w-4" />
-                      <span>{t("viewerCantAnalyze")}</span>
+                      <span>{progressMessage || t("analyzing")}</span>
                     </>
                   ) : multiImages.length > 1 ? (
                     <>

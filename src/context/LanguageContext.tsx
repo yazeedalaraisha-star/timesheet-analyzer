@@ -101,7 +101,6 @@ const translations: Record<Lang, Record<string, string>> = {
     noImageError: "يرجى رفع لقطة شاشة لكشف الدوام أولاً.",
     fileTypeError: "الرجاء اختيار ملف صورة صالح (PNG, JPEG, JPG).",
     compressionError: "حدث خطأ أثناء ضغط الصورة:",
-    viewerCantAnalyze: "المشاهدون لا يمكنهم التحليل",
 
     // History / Saved Reports
     history: "السجلات المحفوظة",
@@ -604,7 +603,6 @@ const translations: Record<Lang, Record<string, string>> = {
     noImageError: "Please upload a timesheet screenshot first.",
     fileTypeError: "Please select a valid image file (PNG, JPEG, JPG).",
     compressionError: "Error compressing image:",
-    viewerCantAnalyze: "Viewers cannot analyze",
 
     // History / Saved Reports
     history: "Saved Records",
