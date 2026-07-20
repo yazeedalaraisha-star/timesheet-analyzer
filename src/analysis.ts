@@ -51,15 +51,20 @@ function getArabicDayName(date: Date): string {
   return days[date.getDay()];
 }
 
-export function processAttendanceData(rawExtracted: any, officialStartTime: string, officialEndTime: string) {
+export function processAttendanceData(
+  rawExtracted: any,
+  officialStartTime: string,
+  officialEndTime: string,
+  scheduleTimeOverrides?: Record<string, { startTime: string; endTime: string }>
+) {
   const employee_info = {
     id: cleanArabicNumbers(rawExtracted.employee_info?.id || "").trim() || "غير معروف",
     name: (rawExtracted.employee_info?.name || "غير معروف").trim(),
     role: (rawExtracted.employee_info?.role || "غير معروف").trim()
   };
 
-  const officialStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600);
-  const officialEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600);
+  const globalStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600);
+  const globalEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600);
 
   const attendanceList = (rawExtracted.attendance_records || []).map((rec: any) => {
     return {
@@ -189,6 +194,10 @@ export function processAttendanceData(rawExtracted: any, officialStartTime: stri
     const dayOfWeek = currentDate.getDay();
     const dayArabic = getArabicDayName(currentDate);
     const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+
+    const override = scheduleTimeOverrides?.[dateKey];
+    const officialStartSec = override ? (parseTimeToSeconds(override.startTime) || globalStartSec) : globalStartSec;
+    const officialEndSec = override ? (parseTimeToSeconds(override.endTime) || globalEndSec) : globalEndSec;
 
     if (!isWeekend) {
       totalWorkingDays++;

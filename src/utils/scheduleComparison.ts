@@ -24,10 +24,49 @@ function normalizeToYYYYMMDDFromSlash(slashDate: string): string {
   return slashDate;
 }
 
+function getFirstSegments(name: string, count: number = 2): string {
+  const segments = name.trim().split(/\s+/);
+  return segments.slice(0, count).join(" ").toLowerCase();
+}
+
+export function findEmployeeScheduleByName(
+  schedules: EmployeeSchedule[],
+  fingerprintName: string
+): EmployeeSchedule | null {
+  const fpSegments = getFirstSegments(fingerprintName, 2);
+  return schedules.find((s) => {
+    const schedSegments = getFirstSegments(s.employeeName, 2);
+    return fpSegments === schedSegments;
+  }) || null;
+}
+
+export function buildScheduleTimeOverrides(
+  employeeSchedule: EmployeeSchedule,
+  shiftDefs: Record<string, Shift>
+): Record<string, { startTime: string; endTime: string }> {
+  const overrides: Record<string, { startTime: string; endTime: string }> = {};
+
+  for (const day of employeeSchedule.days) {
+    if (day.isOff || day.shifts.length === 0 || day.leaveType) continue;
+
+    const firstShift = shiftDefs[day.shifts[0]];
+    const lastShift = shiftDefs[day.shifts[day.shifts.length - 1]];
+    if (firstShift && lastShift) {
+      overrides[day.date] = {
+        startTime: firstShift.startTime,
+        endTime: lastShift.endTime,
+      };
+    }
+  }
+
+  return overrides;
+}
+
 export interface ComparisonResult {
   violations: ScheduleViolation[];
   employeeNotFound: boolean;
   searchedName: string;
+  matchedSchedule: EmployeeSchedule | null;
 }
 
 export function compareScheduleToFingerprint(
@@ -38,12 +77,10 @@ export function compareScheduleToFingerprint(
   const violations: ScheduleViolation[] = [];
   const empName = result.employee_info.name;
 
-  const employeeSchedule = schedules.find(
-    (s) => s.employeeName.trim() === empName.trim()
-  );
+  const employeeSchedule = findEmployeeScheduleByName(schedules, empName);
 
   if (!employeeSchedule) {
-    return { violations: [], employeeNotFound: true, searchedName: empName };
+    return { violations: [], employeeNotFound: true, searchedName: empName, matchedSchedule: null };
   }
 
   const dailyReport = result.daily_report || [];
@@ -148,5 +185,5 @@ export function compareScheduleToFingerprint(
     }
   }
 
-  return { violations: violations.sort((a, b) => a.date.localeCompare(b.date)), employeeNotFound: false, searchedName: empName };
+  return { violations: violations.sort((a, b) => a.date.localeCompare(b.date)), employeeNotFound: false, searchedName: empName, matchedSchedule: employeeSchedule };
 }

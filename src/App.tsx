@@ -33,7 +33,8 @@ import {
 } from "lucide-react";
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule, ScheduleViolation, DEFAULT_SHIFT_DEFINITIONS, Shift } from "./types";
 import { exportToPDF } from "./utils/pdfExport";
-import { compareScheduleToFingerprint } from "./utils/scheduleComparison";
+import { compareScheduleToFingerprint, findEmployeeScheduleByName, buildScheduleTimeOverrides } from "./utils/scheduleComparison";
+import { processAttendanceData } from "./analysis";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import {
@@ -266,6 +267,7 @@ export default function App() {
   const [scheduleViolations, setScheduleViolations] = useState<ScheduleViolation[]>([]);
   const [showScheduleComparison, setShowScheduleComparison] = useState<boolean>(false);
   const [scheduleNotFoundName, setScheduleNotFoundName] = useState<string | null>(null);
+  const [scheduleTimesUsed, setScheduleTimesUsed] = useState<boolean>(false);
 
   const handleUpdateSchedules = (newSchedules: EmployeeSchedule[]) => {
     setSchedules(newSchedules);
@@ -468,6 +470,8 @@ export default function App() {
     setError(null);
     setResult(null);
     setMultiResults([]);
+    setScheduleTimesUsed(false);
+    setShowScheduleComparison(false);
     setProgressMessage("جاري الاتصال بالخادم...");
 
     try {
@@ -517,7 +521,6 @@ export default function App() {
                 } else if (eventType === "complete") {
                   imageResult = data;
                   allResults.push(data);
-                  saveToHistory(data);
                 } else if (eventType === "error") {
                   throw new Error(data.message || "خطأ غير معروف من الخادم.");
                 }
@@ -531,12 +534,28 @@ export default function App() {
         }
       }
 
+      const applyScheduleTimes = (r: TimesheetAnalysisResult): { result: TimesheetAnalysisResult; usedSchedule: boolean } => {
+        const matched = findEmployeeScheduleByName(schedules, r.employee_info.name);
+        if (!matched) return { result: r, usedSchedule: false };
+        const overrides = buildScheduleTimeOverrides(matched, shiftDefs);
+        if (Object.keys(overrides).length === 0) return { result: r, usedSchedule: false };
+        return { result: processAttendanceData(r.extracted_data, officialStartTime, officialEndTime, overrides), usedSchedule: true };
+      };
+
       if (allResults.length === 1) {
-        setResult(allResults[0]);
+        const { result: processed, usedSchedule } = applyScheduleTimes(allResults[0]);
+        setResult(processed);
+        setScheduleTimesUsed(usedSchedule);
+        saveToHistory(processed);
       } else if (allResults.length > 1) {
-        setMultiResults(allResults);
-        const merged = mergeResults(allResults);
+        const processedItems = allResults.map(applyScheduleTimes);
+        const usedSchedule = processedItems.some((p) => p.usedSchedule);
+        const processed = processedItems.map((p) => p.result);
+        setMultiResults(processed);
+        const merged = mergeResults(processed);
         setResult(merged);
+        setScheduleTimesUsed(usedSchedule);
+        saveToHistory(merged);
       }
       setProgressMessage(null);
     } catch (err: any) {
@@ -621,8 +640,8 @@ export default function App() {
   const recalculateRowAndKPIs = (updatedReports: any[]) => {
     if (!result) return;
 
-    const officialStartSec = parseTimeToSeconds(officialStartTime) || 28800; // 08:00:00
-    const officialEndSec = parseTimeToSeconds(officialEndTime) || 61200; // 17:00:00
+    const matched = findEmployeeScheduleByName(schedules, result.employee_info.name);
+    const scheduleOverrides = matched ? buildScheduleTimeOverrides(matched, shiftDefs) : undefined;
 
     let totalDelayMinutes = 0;
     let totalEarlyOutMinutes = 0;
@@ -648,6 +667,14 @@ export default function App() {
       }
 
       totalWorkingDays++;
+
+      const rowDateParts = row.date.split("-");
+      const rowDateKey = rowDateParts.length === 3 && rowDateParts[0].length === 2
+        ? `${rowDateParts[2]}-${rowDateParts[1]}-${rowDateParts[0]}`
+        : row.date;
+      const rowOverride = scheduleOverrides?.[rowDateKey];
+      const officialStartSec = rowOverride ? (parseTimeToSeconds(rowOverride.startTime) || 28800) : 28800;
+      const officialEndSec = rowOverride ? (parseTimeToSeconds(rowOverride.endTime) || 61200) : 61200;
 
       let statusText = "منتظم";
       let statusStyle = "success";
@@ -1446,6 +1473,12 @@ export default function App() {
                           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 mt-0.5">
                             {officialStartTime} — {officialEndTime}
                           </p>
+                          {scheduleTimesUsed && (
+                            <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/60">
+                              <Calendar className="h-2.5 w-2.5" />
+                              {t("scheduleTimesUsed")}
+                            </span>
+                          )}
                         </div>
                       </div>
 
