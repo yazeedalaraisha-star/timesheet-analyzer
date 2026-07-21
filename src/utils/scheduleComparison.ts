@@ -132,12 +132,14 @@ export function compareScheduleToFingerprint(
 
   const reportDates = new Set(reportByDate.keys());
   console.log(`[Compare] Report dates (${reportDates.size}):`, Array.from(reportDates).slice(0, 5));
+  console.log(`[Compare] Daily report row dates (raw):`, dailyReport.slice(0, 3).map(r => r.date));
 
   const scheduleDatesInRange = employeeSchedule.days.filter((d) => reportDates.has(d.date));
   console.log(`[Compare] Schedule dates in range: ${scheduleDatesInRange.length} / ${employeeSchedule.days.length}`);
   if (employeeSchedule.days.length > 0) {
     console.log(`[Compare] Schedule date sample:`, employeeSchedule.days[0].date);
   }
+  console.log(`[Compare] Sample report normalized:`, dailyReport.slice(0, 3).map(r => normalizeToYYYYMMDD(r.date)));
 
   for (const day of scheduleDatesInRange) {
     const schedDate = day.date;
