@@ -115,41 +115,27 @@ export function compareScheduleToFingerprint(
   const employeeSchedule = findEmployeeScheduleByName(schedules, empName);
 
   if (!employeeSchedule) {
-    console.log(`[Compare] Employee "${empName}" not found in schedules (${schedules.length} available)`);
-    console.log(`[Compare] Available schedule names:`, schedules.map(s => s.employeeName));
     return { violations: [], employeeNotFound: true, searchedName: empName, matchedSchedule: null };
   }
 
-  console.log(`[Compare] Matched: "${empName}" → "${employeeSchedule.employeeName}"`);
-
   const dailyReport = result.daily_report || [];
 
-  const reportByDate = new Map<string, DailyReportRow>();
+  const scheduleByDate = new Map<string, typeof employeeSchedule.days[0]>();
+  for (const day of employeeSchedule.days) {
+    scheduleByDate.set(day.date, day);
+  }
+
   for (const row of dailyReport) {
-    const key = normalizeToYYYYMMDD(row.date);
-    reportByDate.set(key, row);
-  }
+    const reportDateKey = normalizeToYYYYMMDD(row.date);
+    const day = scheduleByDate.get(reportDateKey);
 
-  const reportDates = new Set(reportByDate.keys());
-  console.log(`[Compare] Report dates (${reportDates.size}):`, Array.from(reportDates).slice(0, 5));
-  console.log(`[Compare] Daily report row dates (raw):`, dailyReport.slice(0, 3).map(r => r.date));
-
-  const scheduleDatesInRange = employeeSchedule.days.filter((d) => reportDates.has(d.date));
-  console.log(`[Compare] Schedule dates in range: ${scheduleDatesInRange.length} / ${employeeSchedule.days.length}`);
-  if (employeeSchedule.days.length > 0) {
-    console.log(`[Compare] Schedule date sample:`, employeeSchedule.days[0].date);
-  }
-  console.log(`[Compare] Sample report normalized:`, dailyReport.slice(0, 3).map(r => normalizeToYYYYMMDD(r.date)));
-
-  for (const day of scheduleDatesInRange) {
-    const schedDate = day.date;
-    const reportRow = reportByDate.get(schedDate);
+    if (!day) continue;
 
     if (day.isOff) {
-      if (reportRow && !reportRow.isWeekend && !reportRow.hasLeave && (reportRow.checkIn || reportRow.checkOut)) {
+      if (!row.isWeekend && !row.hasLeave && (row.checkIn || row.checkOut)) {
         violations.push({
           employeeName: empName,
-          date: schedDate,
+          date: reportDateKey,
           dayName: day.dayName,
           type: "unscheduled",
           details: `حضور في يوم إجازة (${day.leaveType || "عطلة"})`,
@@ -158,13 +144,8 @@ export function compareScheduleToFingerprint(
       continue;
     }
 
-    if (day.shifts.length === 0 && !day.leaveType) {
-      continue;
-    }
-
-    if (day.leaveType) {
-      continue;
-    }
+    if (day.shifts.length === 0 && !day.leaveType) continue;
+    if (day.leaveType) continue;
 
     if (day.shifts.length > 0) {
       const firstShift = shiftDefs[day.shifts[0]];
@@ -174,11 +155,11 @@ export function compareScheduleToFingerprint(
       const lastShift = shiftDefs[day.shifts[day.shifts.length - 1]];
       const expectedEndSec = lastShift ? parseTimeToSeconds(lastShift.endTime + ":00") : null;
 
-      if (!reportRow || (!reportRow.checkIn && !reportRow.checkOut)) {
-        if (!reportRow?.isWeekend && !reportRow?.hasLeave) {
+      if (!row.checkIn && !row.checkOut) {
+        if (!row.isWeekend && !row.hasLeave) {
           violations.push({
             employeeName: empName,
-            date: schedDate,
+            date: reportDateKey,
             dayName: day.dayName,
             type: "absence",
             expectedTime: `${firstShift.startTime} - ${lastShift?.endTime || "?"}`,
@@ -188,19 +169,19 @@ export function compareScheduleToFingerprint(
         continue;
       }
 
-      if (reportRow.checkIn && expectedStartSec !== null) {
-        const checkInSec = parseTimeToSeconds(reportRow.checkIn);
+      if (row.checkIn && expectedStartSec !== null) {
+        const checkInSec = parseTimeToSeconds(row.checkIn);
         if (checkInSec !== null && checkInSec > expectedStartSec) {
           const actualDelayMins = Math.ceil((checkInSec - expectedStartSec) / 60);
           if (actualDelayMins > GRACE_PERIOD_MINUTES) {
             const delayMins = actualDelayMins - GRACE_PERIOD_MINUTES;
             violations.push({
               employeeName: empName,
-              date: schedDate,
+              date: reportDateKey,
               dayName: day.dayName,
               type: "late_arrival",
               expectedTime: firstShift.startTime,
-              actualTime: reportRow.checkIn,
+              actualTime: row.checkIn,
               delayMinutes: delayMins,
               details: `تأخير ${actualDelayMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${delayMins} دقيقة مخالفة`,
             });
@@ -208,19 +189,19 @@ export function compareScheduleToFingerprint(
         }
       }
 
-      if (reportRow.checkOut && expectedEndSec !== null) {
-        const checkOutSec = parseTimeToSeconds(reportRow.checkOut);
+      if (row.checkOut && expectedEndSec !== null) {
+        const checkOutSec = parseTimeToSeconds(row.checkOut);
         if (checkOutSec !== null && checkOutSec < expectedEndSec) {
           const actualEarlyMins = Math.ceil((expectedEndSec - checkOutSec) / 60);
           if (actualEarlyMins > GRACE_PERIOD_MINUTES) {
             const earlyMins = actualEarlyMins - GRACE_PERIOD_MINUTES;
             violations.push({
               employeeName: empName,
-              date: schedDate,
+              date: reportDateKey,
               dayName: day.dayName,
               type: "early_departure",
               expectedTime: lastShift?.endTime,
-              actualTime: reportRow.checkOut,
+              actualTime: row.checkOut,
               delayMinutes: earlyMins,
               details: `خروج مبكر ${actualEarlyMins} دقيقة (${GRACE_PERIOD_MINUTES} سماح) = ${earlyMins} دقيقة مخالفة`,
             });
@@ -228,19 +209,18 @@ export function compareScheduleToFingerprint(
         }
       }
 
-      if (reportRow.checkIn && !reportRow.checkOut) {
+      if (row.checkIn && !row.checkOut) {
         violations.push({
           employeeName: empName,
-          date: schedDate,
+          date: reportDateKey,
           dayName: day.dayName,
           type: "no_checkout",
-          actualTime: reportRow.checkIn,
+          actualTime: row.checkIn,
           details: "لا يوجد خروج مسجل رغم وجود دخول",
         });
       }
     }
   }
 
-  console.log(`[Compare] Total violations found: ${violations.length}`);
   return { violations: violations.sort((a, b) => a.date.localeCompare(b.date)), employeeNotFound: false, searchedName: empName, matchedSchedule: employeeSchedule };
 }
