@@ -115,8 +115,12 @@ export function compareScheduleToFingerprint(
   const employeeSchedule = findEmployeeScheduleByName(schedules, empName);
 
   if (!employeeSchedule) {
+    console.log(`[Compare] Employee "${empName}" not found in schedules (${schedules.length} available)`);
+    console.log(`[Compare] Available schedule names:`, schedules.map(s => s.employeeName));
     return { violations: [], employeeNotFound: true, searchedName: empName, matchedSchedule: null };
   }
+
+  console.log(`[Compare] Matched: "${empName}" → "${employeeSchedule.employeeName}"`);
 
   const dailyReport = result.daily_report || [];
 
@@ -127,7 +131,13 @@ export function compareScheduleToFingerprint(
   }
 
   const reportDates = new Set(reportByDate.keys());
+  console.log(`[Compare] Report dates (${reportDates.size}):`, Array.from(reportDates).slice(0, 5));
+
   const scheduleDatesInRange = employeeSchedule.days.filter((d) => reportDates.has(d.date));
+  console.log(`[Compare] Schedule dates in range: ${scheduleDatesInRange.length} / ${employeeSchedule.days.length}`);
+  if (employeeSchedule.days.length > 0) {
+    console.log(`[Compare] Schedule date sample:`, employeeSchedule.days[0].date);
+  }
 
   for (const day of scheduleDatesInRange) {
     const schedDate = day.date;
@@ -229,5 +239,6 @@ export function compareScheduleToFingerprint(
     }
   }
 
+  console.log(`[Compare] Total violations found: ${violations.length}`);
   return { violations: violations.sort((a, b) => a.date.localeCompare(b.date)), employeeNotFound: false, searchedName: empName, matchedSchedule: employeeSchedule };
 }
