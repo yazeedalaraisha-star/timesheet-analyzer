@@ -55,6 +55,26 @@ function calculateTotalHours(days: DaySchedule[]): number {
   return total;
 }
 
+function mergeSchedules(existing: EmployeeSchedule[], incoming: EmployeeSchedule[]): EmployeeSchedule[] {
+  const result = [...existing];
+  for (const inc of incoming) {
+    const idx = result.findIndex(
+      (e) => e.employeeName === inc.employeeName && (e.department || "") === (inc.department || "")
+    );
+    if (idx >= 0) {
+      const existingDaysMap = new Map(result[idx].days.map((d) => [d.date, d]));
+      for (const day of inc.days) {
+        existingDaysMap.set(day.date, day);
+      }
+      const mergedDays = Array.from(existingDaysMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+      result[idx] = { ...result[idx], days: mergedDays };
+    } else {
+      result.push(inc);
+    }
+  }
+  return result;
+}
+
 export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const { t } = useLang();
   const now = new Date();
@@ -309,10 +329,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       }
 
       if (newSchedules.length > 0) {
-        const filtered = schedules.filter(
-          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
-        );
-        onUpdate([...filtered, ...newSchedules]);
+        onUpdate(mergeSchedules(schedules, newSchedules));
         alert(t("ocrExtracted", { count: newSchedules.length }));
       } else {
         alert(t("ocrNoValid"));
@@ -453,10 +470,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
     if (newSchedules.length > 0) {
       if (window.confirm(t("importFound", { count: newSchedules.length }))) {
-        const existing = schedules.filter(
-          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
-        );
-        onUpdate([...existing, ...newSchedules]);
+        onUpdate(mergeSchedules(schedules, newSchedules));
       }
     } else {
       alert(t("importNoValid"));
@@ -553,10 +567,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
 
     if (newSchedules.length > 0) {
       if (window.confirm(t("importFound", { count: newSchedules.length }))) {
-        const existing = schedules.filter(
-          (s) => (s.department || t("noDept")) !== dept || s.employeeName === "—"
-        );
-        onUpdate([...existing, ...newSchedules]);
+        onUpdate(mergeSchedules(schedules, newSchedules));
       }
     }
   };
