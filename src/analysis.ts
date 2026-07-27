@@ -183,6 +183,7 @@ export function processAttendanceData(
   let totalWorkingDays = 0;
   let perfectComplianceDays = 0;
   let totalWorkHours = 0;
+  let totalRequiredHours = 0;
 
   const lateDaysSummary: any[] = [];
   const duplicateFingerprintsSummary: any[] = [];
@@ -203,6 +204,8 @@ export function processAttendanceData(
 
     if (!isWeekend) {
       totalWorkingDays++;
+      const dayRequiredHours = Math.max(0, (officialEndSec - officialStartSec) / 3600);
+      totalRequiredHours += dayRequiredHours;
     }
 
     const attendance = attendanceByDate[dateKey];
@@ -430,6 +433,7 @@ export function processAttendanceData(
       perfectComplianceDays,
       correctAttendancePercentage,
       totalWorkHours: Number(totalWorkHours.toFixed(1)),
+      requiredWorkHours: Number(totalRequiredHours.toFixed(1)),
       totalDuplicateFingerprintDays
     },
     lateDaysSummary,

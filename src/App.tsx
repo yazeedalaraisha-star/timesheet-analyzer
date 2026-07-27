@@ -32,7 +32,7 @@ import {
   Shield,
 } from "lucide-react";
 import { TimesheetAnalysisResult, SavedReport, DuplicateFingerprintItem, OvertimeEntry, EmployeeSchedule, ScheduleViolation, DEFAULT_SHIFT_DEFINITIONS, Shift } from "./types";
-import { exportToPDF } from "./utils/pdfExport";
+import { exportToPDF, exportEmployeeReportPDF, exportViolationsPDF } from "./utils/pdfExport";
 import { compareScheduleToFingerprint, findEmployeeScheduleByName, buildScheduleTimeOverrides } from "./utils/scheduleComparison";
 import { processAttendanceData, GRACE_PERIOD_MINUTES } from "./analysis";
 import { useLang } from "./context/LanguageContext";
@@ -733,6 +733,7 @@ export default function App() {
     let totalWorkingDays = 0;
     let perfectComplianceDays = 0;
     let totalWorkHours = 0;
+    let totalRequiredHours = 0;
     let totalDuplicateFingerprintDays = 0;
     const duplicateFingerprintsSummary: DuplicateFingerprintItem[] = [];
 
@@ -758,6 +759,8 @@ export default function App() {
       const rowOverride = scheduleOverrides?.[rowDateKey];
       const officialStartSec = rowOverride ? (parseTimeToSeconds(rowOverride.startTime) || 28800) : 28800;
       const officialEndSec = rowOverride ? (parseTimeToSeconds(rowOverride.endTime) || 61200) : 61200;
+      const dayRequiredHours = Math.max(0, (officialEndSec - officialStartSec) / 3600);
+      totalRequiredHours += dayRequiredHours;
 
       let statusText = "منتظم";
       let statusStyle = "success";
@@ -904,6 +907,7 @@ export default function App() {
         perfectComplianceDays,
         correctAttendancePercentage,
         totalWorkHours: Number(totalWorkHours.toFixed(1)),
+        requiredWorkHours: Number(totalRequiredHours.toFixed(1)),
         totalDuplicateFingerprintDays
       },
       duplicateFingerprintsSummary,
@@ -1518,6 +1522,17 @@ export default function App() {
                           <Download className="h-3.5 w-3.5" />
                           <span>Excel</span>
                         </button>
+
+                        <button
+                          onClick={async () => {
+                            if (!result) return;
+                            await exportEmployeeReportPDF(result, officialStartTime, officialEndTime, lang);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>{t("personalReport")}</span>
+                        </button>
                         
                         <button
                           onClick={() => setShowRawJson(!showRawJson)}
@@ -1681,10 +1696,16 @@ export default function App() {
                       <div className="space-y-1">
                         <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{t("workHours")}</span>
                         <div className="flex items-baseline gap-1 pt-1">
-                          <span className="text-2xl font-black text-slate-700 dark:text-white">
+                          <span className={`text-2xl font-black ${(result.kpis.totalWorkHours ?? 0) >= (result.kpis.requiredWorkHours ?? 0) ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {result.kpis.totalWorkHours ?? 0}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{t("hour")}</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">/ {result.kpis.requiredWorkHours ?? 0} {t("hour")}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mt-2">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${(result.kpis.totalWorkHours ?? 0) >= (result.kpis.requiredWorkHours ?? 0) ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                            style={{ width: `${Math.min(100, ((result.kpis.totalWorkHours ?? 0) / Math.max(1, result.kpis.requiredWorkHours ?? 1)) * 100)}%` }}
+                          />
                         </div>
                       </div>
                       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
@@ -1817,6 +1838,13 @@ export default function App() {
                                 </div>
                               ))}
                             </div>
+                            <button
+                              onClick={() => exportViolationsPDF(scheduleViolations, result?.employee_info.name || "", lang)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg transition-all"
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                              <span>{t("exportViolationsPDF")}</span>
+                            </button>
                           </>
                         )}
                       </div>

@@ -140,6 +140,8 @@ const translations: Record<Lang, Record<string, string>> = {
     leavesUsedDesc: "إجمالي أيام الإجازات الرسمية",
     workHours: "ساعات العمل الفعلية",
     workHoursDesc: "إجمالي ساعات الدوام المحسوبة",
+    personalReport: "تقرير شخصي",
+    exportViolationsPDF: "تصدير PDF",
     duplicateFp: "بصمات مكررة",
     duplicateFpDesc: "حركات دخول أو خروج مكررة",
 
@@ -646,6 +648,8 @@ const translations: Record<Lang, Record<string, string>> = {
     leavesUsedDesc: "Total official leave days",
     workHours: "Actual Work Hours",
     workHoursDesc: "Total calculated work hours",
+    personalReport: "Personal Report",
+    exportViolationsPDF: "Export PDF",
     duplicateFp: "Duplicate Fingerprints",
     duplicateFpDesc: "Duplicate check-in/out records",
 

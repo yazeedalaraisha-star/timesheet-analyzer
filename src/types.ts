@@ -52,6 +52,7 @@ export interface AnalysisKPIs {
   perfectComplianceDays?: number;
   correctAttendancePercentage?: number;
   totalWorkHours?: number;
+  requiredWorkHours?: number;
   totalDuplicateFingerprintDays?: number;
 }
 
