@@ -757,8 +757,8 @@ export default function App() {
         ? `${rowDateParts[2]}-${rowDateParts[1]}-${rowDateParts[0]}`
         : row.date;
       const rowOverride = scheduleOverrides?.[rowDateKey];
-      const officialStartSec = rowOverride ? (parseTimeToSeconds(rowOverride.startTime) || 28800) : 28800;
-      const officialEndSec = rowOverride ? (parseTimeToSeconds(rowOverride.endTime) || 61200) : 61200;
+      const officialStartSec = rowOverride ? (parseTimeToSeconds(rowOverride.startTime) ?? 28800) : 28800;
+      const officialEndSec = rowOverride ? (parseTimeToSeconds(rowOverride.endTime) ?? 61200) : 61200;
       const dayRequiredHours = Math.max(0, (officialEndSec - officialStartSec) / 3600);
       totalRequiredHours += dayRequiredHours;
 

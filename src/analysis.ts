@@ -65,8 +65,8 @@ export function processAttendanceData(
     role: (rawExtracted.employee_info?.role || "غير معروف").trim()
   };
 
-  const globalStartSec = parseTimeToSeconds(officialStartTime) || (8 * 3600);
-  const globalEndSec = parseTimeToSeconds(officialEndTime) || (17 * 3600);
+  const globalStartSec = parseTimeToSeconds(officialStartTime) ?? (8 * 3600);
+  const globalEndSec = parseTimeToSeconds(officialEndTime) ?? (17 * 3600);
 
   const attendanceList = (rawExtracted.attendance_records || []).map((rec: any) => {
     return {
@@ -111,8 +111,8 @@ export function processAttendanceData(
       if (!attendanceByDate[dateKey].checkIn) {
         attendanceByDate[dateKey].checkIn = rec;
       } else {
-        const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkIn.time) || 999999;
-        const newSec = parseTimeToSeconds(rec.time) || 999999;
+        const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkIn.time) ?? 999999;
+        const newSec = parseTimeToSeconds(rec.time) ?? 999999;
         if (newSec < currentSec) {
           attendanceByDate[dateKey].checkIn = rec;
         }
@@ -122,8 +122,8 @@ export function processAttendanceData(
       if (!attendanceByDate[dateKey].checkOut) {
         attendanceByDate[dateKey].checkOut = rec;
       } else {
-        const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkOut.time) || 0;
-        const newSec = parseTimeToSeconds(rec.time) || 0;
+        const currentSec = parseTimeToSeconds(attendanceByDate[dateKey].checkOut.time) ?? 0;
+        const newSec = parseTimeToSeconds(rec.time) ?? 0;
         if (newSec > currentSec) {
           attendanceByDate[dateKey].checkOut = rec;
         }
@@ -199,8 +199,8 @@ export function processAttendanceData(
     const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
 
     const override = scheduleTimeOverrides?.[dateKey];
-    const officialStartSec = override ? (parseTimeToSeconds(override.startTime) || globalStartSec) : globalStartSec;
-    const officialEndSec = override ? (parseTimeToSeconds(override.endTime) || globalEndSec) : globalEndSec;
+    const officialStartSec = override ? (parseTimeToSeconds(override.startTime) ?? globalStartSec) : globalStartSec;
+    const officialEndSec = override ? (parseTimeToSeconds(override.endTime) ?? globalEndSec) : globalEndSec;
 
     if (!isWeekend) {
       totalWorkingDays++;

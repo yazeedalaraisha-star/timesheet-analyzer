@@ -148,8 +148,8 @@ async function startServer() {
     crossOriginEmbedderPolicy: false,
   }));
 
-  // Set high JSON body limit to handle large screenshot base64 strings
-  app.use(express.json({ limit: "50mb" }));
+  // JSON body limit — images are compressed client-side; 10MB is sufficient
+  app.use(express.json({ limit: "10mb" }));
 
   // Optional API key authentication middleware
   const API_KEY = process.env.API_KEY;

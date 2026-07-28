@@ -344,11 +344,11 @@ const translations: Record<Lang, Record<string, string>> = {
     ocrNoData: "لم يتم العثور على بيانات في الصورة",
     ocrExtracted: "تم استخراج جدول {count} موظف من الصورة",
     ocrNoValid: "لم يتم استخراج بيانات صالحة من الصورة",
-    ocrError: "خطأ في ق读ة الصورة: {error}",
+    ocrError: "خطأ في قراءة الصورة: {error}",
     ocrUnknownError: "خطأ غير معروف",
 
     // Import
-    importFound: "تم العثور على {count} موظف. هل تريد إضافتهم？",
+    importFound: "تم العثور على {count} موظف. هل تريد إضافتهم؟",
     importFileEmpty: "الملف فارغ",
     importNoValid: "لم يتم العثور على بيانات صالحة",
     importEmpty: "الملف فارغ",
@@ -420,7 +420,7 @@ const translations: Record<Lang, Record<string, string>> = {
     errPasswordWrong: "الباسورد غير صحيح",
 
     // Entries Table
-    recordsTitle: "ال_records",
+    recordsTitle: "السجلات",
     recordsOf: "من",
     searchNamePlaceholder: "بحث بالاسم...",
     exportPdfTitle: "تصدير PDF",
@@ -442,7 +442,7 @@ const translations: Record<Lang, Record<string, string>> = {
     totalDays: "{count} يوم",
 
     // Confirm Dialogs
-    confirmDeleteRecords: "هل أنت متأكد من حذف جميع س_records {name}؟",
+    confirmDeleteRecords: "هل أنت متأكد من حذف جميع سجلات العمل الإضافي لـ {name}؟",
     confirmDeleteAll: "هل أنت متأكد من حذف جميع سجلات العمل الإضافي لجميع الموظفين؟",
 
     // CSV Export Headers
