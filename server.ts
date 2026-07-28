@@ -550,24 +550,28 @@ async function startServer() {
       const targetYear = year || new Date().getFullYear();
 
       const promptPart = {
-        text: `أنت خبير استخراج بيانات من جداول الدوام الشهرية. قم بقراءة الصورة بدقة.
+        text: `You are an expert at reading Arabic monthly work schedule tables. Analyze this image carefully.
 
-الشهر المطلوب: ${targetMonth}/${targetYear}
+Target month: ${targetMonth}/${targetYear}
 
-التعليمات:
-1. اقرأ جميع أسماء الموظفين من أول عمود بالجدول.
-2. كل عمود يمثل يوماً من الشهر (1 إلى 31).
-3. في كل خلية، اقرأ الشفتات: A أو B أو C أو مزيج منها (مثل AB).
-4. A = نهاري (06-14)، B = مسائي (14-22)، C = ليلي (22-06).
-5. إذا كان اليوم مكتوب فيه "إجازة" أو "OFF" أو "ع" اعتبره OFF.
-6. الأرقام العربية حوّلها لأرقام لاتينية.
-7. إذا كانت الخلية فارغة، اكتب "".
-8. لا تتخمن — إذا ما قريت الخلية اكتب "".
+CRITICAL INSTRUCTIONS:
+1. Read ALL employee names from the first column of the table.
+2. Each column represents a day of the month (1 to 31).
+3. In each cell, read the shift letter: A, B, C, or a combination like AB.
+   - A = Morning shift (06:00-14:00)
+   - B = Afternoon shift (14:00-22:00)  
+   - C = Night shift (22:00-06:00)
+4. If the cell says "إجازة" or "OFF" or "ع" or "ح", mark it as "OFF".
+5. Convert any Eastern Arabic numerals (٠١٢٣٤٥٦٧٨٩) to Western digits (0-9).
+6. If a cell is empty, use "".
+7. Do NOT guess — if you cannot read a cell, use "".
+8. Employee names must be read EXACTLY as written in Arabic in the image.
+9. Keep all names in their original Arabic text — do not translate or transliterate.
 
-أعطني النتيجة فقط كمصفوفة JSON بدون أي نص إضافي:
-{"employees":[{"name":"اسم الموظف","days":{"1":"A","2":"B","3":"OFF","4":"AB","5":"C",...}}]}
+Return ONLY a JSON object matching this exact structure:
+{"employees":[{"name":"exact Arabic name from image","days":{"1":"A","2":"B","3":"OFF","4":"AB","5":"C"}}]}
 
-days: المفتاح رقم اليوم (1-31)، القيمة الشفتات. فقط الأيام اللي فيها بيانات.`
+The "days" keys are day numbers (1-31). Only include days that have data.`
       };
 
       const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
@@ -583,17 +587,38 @@ days: المفتاح رقم اليوم (1-31)، القيمة الشفتات. ف�
             const response = await ai.models.generateContent({
               model,
               contents: { parts: [imagePart, promptPart] },
-              config: { temperature: 0.1 },
+              config: {
+                temperature: 0.1,
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    employees: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          name: { type: Type.STRING, description: "اسم الموظف كما هو مكتوب في الصورة" },
+                          days: {
+                            type: Type.OBJECT,
+                            description: "الشفتات لكل يوم — المفتاح رقم اليوم (1-31)، القيمة الشفت (A أو B أو C أو AB أو OFF)"
+                          }
+                        },
+                        required: ["name", "days"]
+                      }
+                    }
+                  },
+                  required: ["employees"]
+                },
+              },
             });
-            let text = (response.text || "").trim();
-            text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-            const jsonMatch = text.match(/\{[\s\S]*"employees"[\s\S]*\}/);
-            if (jsonMatch) {
-              result = JSON.parse(jsonMatch[0]);
+            const responseText = (response.text || "").trim();
+            const parsed = JSON.parse(responseText);
+            if (parsed?.employees && Array.isArray(parsed.employees)) {
+              result = parsed;
               break;
             }
-            result = JSON.parse(text);
-            break;
+            throw new Error("Invalid response structure");
           } catch (err: any) {
             lastError = err;
             console.error(`[Schedule OCR] ${model} failed:`, err.message);

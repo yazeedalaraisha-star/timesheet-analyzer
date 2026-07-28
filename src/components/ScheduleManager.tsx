@@ -285,10 +285,29 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     setOcrStatus(t("ocrReading"));
 
     try {
-      const reader = new FileReader();
       const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let w = img.width;
+            let h = img.height;
+            if (w > 2400) { h = Math.round((h * 2400) / w); w = 2400; }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) { resolve(reader.result as string); return; }
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(img, 0, 0, w, h);
+            const small = (w * h) < 4000000;
+            resolve(canvas.toDataURL(small ? "image/png" : "image/jpeg", 0.92));
+          };
+          img.onerror = () => reject(new Error("فشل تحميل الصورة"));
+          img.src = reader.result as string;
+        };
+        reader.onerror = () => reject(new Error("فشل قراءة الملف"));
         reader.readAsDataURL(file);
       });
 
