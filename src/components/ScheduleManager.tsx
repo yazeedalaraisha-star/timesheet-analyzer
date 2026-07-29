@@ -457,13 +457,17 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     }
 
     // DEBUG: show parsed header info
-    let debugMsg = "أول 3 صفوف:\n";
-    for (let r = 0; r < Math.min(3, rows.length); r++) {
-      const vals = (rows[r] as any[]).map((v: any) => String(v ?? "").slice(0, 15)).join(" | ");
-      debugMsg += `صف ${r}: ${vals}\n`;
+    let debugMsg = `عدد الأعمدة: ${headerRow.length}\n`;
+    debugMsg += `عدد أعمدة التاريخ: ${dateHeaders.length}\n`;
+    debugMsg += dateHeaders.slice(0, 5).map((dh) => `عمود ${dh.idx} → ${dh.dateStr}`).join("\n") + "\n\n";
+    // Show first data row values
+    if (rows.length >= 2) {
+      const firstRow = rows[1];
+      debugMsg += "أول صف بيانات:\n";
+      for (let c = 0; c < Math.min(firstRow.length, 10); c++) {
+        debugMsg += `  عمود ${c}: "${String(firstRow[c] ?? "").slice(0, 20)}"\n`;
+      }
     }
-    debugMsg += `\nعدد أعمدة التاريخ: ${dateHeaders.length}\n`;
-    debugMsg += dateHeaders.slice(0, 5).map((dh) => `عمود ${dh.idx} → ${dh.dateStr}`).join("\n");
     alert(debugMsg);
 
     const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
