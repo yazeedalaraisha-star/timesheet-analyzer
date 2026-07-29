@@ -590,35 +590,22 @@ The "days" keys are day numbers (1-31). Only include days that have data.`
               config: {
                 temperature: 0.1,
                 responseMimeType: "application/json",
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: {
-                    employees: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          name: { type: Type.STRING, description: "اسم الموظف كما هو مكتوب في الصورة" },
-                          days: {
-                            type: Type.OBJECT,
-                            description: "الشفتات لكل يوم — المفتاح رقم اليوم (1-31)، القيمة الشفت (A أو B أو C أو AB أو OFF)"
-                          }
-                        },
-                        required: ["name", "days"]
-                      }
-                    }
-                  },
-                  required: ["employees"]
-                },
               },
             });
-            const responseText = (response.text || "").trim();
-            const parsed = JSON.parse(responseText);
-            if (parsed?.employees && Array.isArray(parsed.employees)) {
-              result = parsed;
+            let parsed: any = null;
+            if (typeof response.text === "string") {
+              const textClean = response.text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+              parsed = JSON.parse(textClean);
+            } else if (typeof response.text === "object" && response.text) {
+              parsed = response.text;
+            }
+            if (!parsed) throw new Error("استجابة فارغة");
+            const employees = parsed?.employees || (Array.isArray(parsed) ? parsed : null);
+            if (employees && Array.isArray(employees) && employees.length > 0) {
+              result = { employees };
               break;
             }
-            throw new Error("Invalid response structure");
+            throw new Error("لم يتم العثور على موظفين في النتيجة");
           } catch (err: any) {
             lastError = err;
             console.error(`[Schedule OCR] ${model} failed:`, err.message);
