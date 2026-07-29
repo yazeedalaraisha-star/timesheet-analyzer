@@ -372,8 +372,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        // raw: false → dates come as formatted strings, not serial numbers
-        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { header: 1, raw: false, defval: "" });
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { header: 1, defval: "" });
         parseExcelData(jsonData);
       };
       reader.readAsArrayBuffer(file);
