@@ -372,7 +372,8 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { header: 1 });
+        // raw: false → dates come as formatted strings, not serial numbers
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { header: 1, raw: false, defval: "" });
         parseExcelData(jsonData);
       };
       reader.readAsArrayBuffer(file);
@@ -393,7 +394,18 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     if (rows.length < 2) { alert(t("importFileEmpty")); return; }
     const dept = selectedDept || t("noDept");
 
-    const headerRow = rows[0].map(String).map((h) => h?.trim() || "");
+    const headerRow = rows[0].map((cell: any) => {
+      // Excel serial date number → formatted date string
+      if (typeof cell === "number" && cell > 59 && cell < 1000000) {
+        try {
+          const parsed = XLSX.SSF.parse_date_code(cell);
+          if (parsed?.d && parsed?.m && parsed?.y) {
+            return `${String(parsed.d).padStart(2, "0")}/${String(parsed.m).padStart(2, "0")}/${parsed.y}`;
+          }
+        } catch {}
+      }
+      return String(cell || "").trim();
+    });
     const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name|employee/i.test(h));
     const deptIdx = headerRow.findIndex((h) => /القسم|dept|department/i.test(h));
 
