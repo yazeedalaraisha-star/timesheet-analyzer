@@ -86,41 +86,47 @@ async function callGeminiWithRetryAndFallback(
   let lastError: any = null;
 
   for (const model of modelsToTry) {
-    let attempts = 3;
-    let delay = 1500; // start with a slightly larger delay for 503 errors
+    let attempts = 2;
+    let delay = 1000;
     while (attempts > 0) {
       try {
         console.log(`[Gemini] Attempting analysis using model: ${model} (Attempts remaining: ${attempts})`);
-        const response = await ai.models.generateContent({
-          model: model,
-          contents: { parts: [imagePart, promptPart] },
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: schema,
-            temperature: 0.1,
-          },
-        });
+        const response = await Promise.race([
+          ai.models.generateContent({
+            model: model,
+            contents: { parts: [imagePart, promptPart] },
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: schema,
+              temperature: 0.1,
+            },
+          }),
+          new Promise<any>((_, reject) =>
+            setTimeout(() => reject(new Error("Request timed out after 45s")), 45000)
+          ),
+        ]);
         return response;
       } catch (err: any) {
         lastError = err;
         console.error(`[Gemini Error] Model ${model} failed:`, err.message || err);
-        
+
         const errorMessage = String(err.message || "").toLowerCase();
-        const isTransient = errorMessage.includes("503") || 
-                            errorMessage.includes("demand") || 
-                            errorMessage.includes("temporary") || 
-                            errorMessage.includes("limit") || 
-                            errorMessage.includes("429") || 
-                            errorMessage.includes("unavailable") ||
-                            errorMessage.includes("overloaded");
-                            
+        const isTransient =
+          errorMessage.includes("503") ||
+          errorMessage.includes("demand") ||
+          errorMessage.includes("temporary") ||
+          errorMessage.includes("limit") ||
+          errorMessage.includes("429") ||
+          errorMessage.includes("unavailable") ||
+          errorMessage.includes("overloaded") ||
+          errorMessage.includes("timed out");
+
         if (isTransient && attempts > 1) {
-          console.log(`[Gemini Retry] Transient error detected, backing off for ${delay}ms before retry...`);
+          console.log(`[Gemini Retry] Transient error, backing off ${delay}ms...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= 2; // exponential backoff
+          delay *= 2;
           attempts--;
         } else {
-          // If not transient, or we ran out of attempts, try the next model
           break;
         }
       }
@@ -579,19 +585,24 @@ The "days" keys are day numbers (1-31). Only include days that have data.`
       let result: any = null;
 
       for (const model of modelsToTry) {
-        let attempts = 3;
-        let delay = 1500;
+        let attempts = 2;
+        let delay = 1000;
         while (attempts > 0) {
           try {
             console.log(`[Schedule OCR] Trying model: ${model} (attempts: ${attempts})`);
-            const response = await ai.models.generateContent({
-              model,
-              contents: { parts: [imagePart, promptPart] },
-              config: {
-                temperature: 0.1,
-                responseMimeType: "application/json",
-              },
-            });
+            const response = await Promise.race([
+              ai.models.generateContent({
+                model,
+                contents: { parts: [imagePart, promptPart] },
+                config: {
+                  temperature: 0.1,
+                  responseMimeType: "application/json",
+                },
+              }),
+              new Promise<any>((_, reject) =>
+                setTimeout(() => reject(new Error("Request timed out after 45s")), 45000)
+              ),
+            ]);
             let parsed: any = null;
             if (typeof response.text === "string") {
               const textClean = response.text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
@@ -610,7 +621,7 @@ The "days" keys are day numbers (1-31). Only include days that have data.`
             lastError = err;
             console.error(`[Schedule OCR] ${model} failed:`, err.message);
             const msg = String(err.message || "").toLowerCase();
-            const isTransient = msg.includes("503") || msg.includes("429") || msg.includes("unavailable") || msg.includes("overloaded");
+            const isTransient = msg.includes("503") || msg.includes("429") || msg.includes("unavailable") || msg.includes("overloaded") || msg.includes("timed out");
             if (isTransient && attempts > 1) {
               await new Promise((r) => setTimeout(r, delay));
               delay *= 2;
