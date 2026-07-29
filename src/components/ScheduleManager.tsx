@@ -55,6 +55,17 @@ function calculateTotalHours(days: DaySchedule[]): number {
   return total;
 }
 
+function excelSerialToDate(serial: number): string | null {
+  if (serial < 1 || serial > 1000000) return null;
+  const adjusted = serial >= 61 ? serial - 1 : serial;
+  const date = new Date(1900, 0, adjusted);
+  if (isNaN(date.getTime())) return null;
+  const d = String(date.getDate()).padStart(2, "0");
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
 function mergeSchedules(existing: EmployeeSchedule[], incoming: EmployeeSchedule[]): EmployeeSchedule[] {
   const result = [...existing];
   for (const inc of incoming) {
@@ -394,16 +405,11 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
     const dept = selectedDept || t("noDept");
 
     const headerRow = rows[0].map((cell: any) => {
-      // Excel serial date number → formatted date string
       if (typeof cell === "number" && cell > 59 && cell < 1000000) {
-        try {
-          const parsed = XLSX.SSF.parse_date_code(cell);
-          if (parsed?.d && parsed?.m && parsed?.y) {
-            return `${String(parsed.d).padStart(2, "0")}/${String(parsed.m).padStart(2, "0")}/${parsed.y}`;
-          }
-        } catch {}
+        const converted = excelSerialToDate(cell);
+        if (converted) return converted;
       }
-      return String(cell || "").trim();
+      return String(cell ?? "").trim();
     });
     const nameIdx = headerRow.findIndex((h) => /الموظف|الاسم|name|employee/i.test(h));
     const deptIdx = headerRow.findIndex((h) => /القسم|dept|department/i.test(h));
@@ -449,6 +455,16 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
         }
       }
     }
+
+    // DEBUG: show parsed header info
+    let debugMsg = "أول 3 صفوف:\n";
+    for (let r = 0; r < Math.min(3, rows.length); r++) {
+      const vals = (rows[r] as any[]).map((v: any) => String(v ?? "").slice(0, 15)).join(" | ");
+      debugMsg += `صف ${r}: ${vals}\n`;
+    }
+    debugMsg += `\nعدد أعمدة التاريخ: ${dateHeaders.length}\n`;
+    debugMsg += dateHeaders.slice(0, 5).map((dh) => `عمود ${dh.idx} → ${dh.dateStr}`).join("\n");
+    alert(debugMsg);
 
     const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
 
