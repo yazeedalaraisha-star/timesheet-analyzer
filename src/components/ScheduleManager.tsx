@@ -456,20 +456,6 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
       }
     }
 
-    // DEBUG: show parsed header info
-    let debugMsg = `عدد الأعمدة: ${headerRow.length}\n`;
-    debugMsg += `عدد أعمدة التاريخ: ${dateHeaders.length}\n`;
-    debugMsg += dateHeaders.slice(0, 5).map((dh) => `عمود ${dh.idx} → ${dh.dateStr}`).join("\n") + "\n\n";
-    // Show first data row values
-    if (rows.length >= 2) {
-      const firstRow = rows[1];
-      debugMsg += "أول صف بيانات:\n";
-      for (let c = 0; c < Math.min(firstRow.length, 10); c++) {
-        debugMsg += `  عمود ${c}: "${String(firstRow[c] ?? "").slice(0, 20)}"\n`;
-      }
-    }
-    alert(debugMsg);
-
     const map = new Map<string, { dept: string; days: Map<string, DaySchedule> }>();
 
     for (let r = 1; r < rows.length; r++) {

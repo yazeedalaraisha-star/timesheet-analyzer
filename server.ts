@@ -10,6 +10,16 @@ import { processAttendanceData } from "./src/analysis";
 
 dotenv.config();
 
+if (!process.env.OVERTIME_PASSWORD) {
+  console.warn("[SECURITY WARNING] OVERTIME_PASSWORD not set — falling back to known default. Set it in Render env vars before launch!");
+}
+if (!process.env.ADMIN_PASSWORD) {
+  console.warn("[SECURITY WARNING] ADMIN_PASSWORD not set — admin login will use the default password. Set it in Render env vars!");
+}
+if (!process.env.GEMINI_API_KEY) {
+  console.warn("[SECURITY WARNING] GEMINI_API_KEY not set — analysis endpoints will fail.");
+}
+
 const MAX_IMAGE_SIZE_MB = 10;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
@@ -21,34 +31,60 @@ process.on("unhandledRejection", (reason) => {
   console.error("[FATAL] Unhandled Rejection:", reason);
 });
 
-// Simple in-memory rate limiter
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_MAX = 10; // max requests
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute window
+// Simple in-memory rate limiters
+const rateLimitMaps: Map<string, { count: number; resetTime: number }>[] = [];
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const record = rateLimitMap.get(ip);
-  
-  if (!record || now > record.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+function createRateLimiter(max: number, windowMs: number, message: string) {
+  const map = new Map<string, { count: number; resetTime: number }>();
+  rateLimitMaps.push(map);
+
+  function check(ip: string): boolean {
+    const now = Date.now();
+    const record = map.get(ip);
+    if (!record || now > record.resetTime) {
+      map.set(ip, { count: 1, resetTime: now + windowMs });
+      return true;
+    }
+    if (record.count >= max) {
+      return false;
+    }
+    record.count++;
     return true;
   }
-  
-  if (record.count >= RATE_LIMIT_MAX) {
-    return false;
+
+  function middleware(req: any, res: any, next: any) {
+    const ip = req.ip || req.socket?.remoteAddress || "unknown";
+    if (!check(ip)) {
+      return res.status(429).json({ error: message });
+    }
+    next();
   }
-  
-  record.count++;
-  return true;
+
+  return middleware;
 }
+
+// Strict limiter for analysis endpoints (Gemini quota is small)
+const strictAnalysisLimiter = createRateLimiter(
+  10,
+  60 * 1000,
+  "تم تجاوز الحد المسموح من الطلبات. يرجى الانتظار دقيقة واحدة ثم المحاولة مرة أخرى."
+);
+
+// General limiter for all /api routes
+const globalApiLimiter = createRateLimiter(
+  120,
+  60 * 1000,
+  "تم تجاوز الحد المسموح من الطلبات. يرجى المحاولة لاحقاً."
+);
 
 // Clean up old entries every 5 minutes
 const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now();
-  for (const [ip, record] of rateLimitMap.entries()) {
-    if (now > record.resetTime) {
-      rateLimitMap.delete(ip);
+  for (const map of rateLimitMaps) {
+    for (const [ip, record] of map.entries()) {
+      if (now > record.resetTime) {
+        map.delete(ip);
+      }
     }
   }
 }, 5 * 60 * 1000);
@@ -196,20 +232,15 @@ async function startServer() {
     console.error("[DB] MongoDB connection error:", err.message);
   });
 
+  // General rate limiter for all /api routes
+  app.use("/api", globalApiLimiter);
+
   // Mount API routes (reports, leave-balances, policies, db-status)
   app.use("/api", apiRouter);
 
   // API Endpoint for timesheet analysis
-  app.post("/api/analyze", async (req, res) => {
+  app.post("/api/analyze", strictAnalysisLimiter, async (req, res) => {
     try {
-      // Rate limiting check
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(clientIp)) {
-        return res.status(429).json({ 
-          error: "تم تجاوز الحد المسموح من الطلبات. يرجى الانتظار دقيقة واحدة ثم المحاولة مرة أخرى." 
-        });
-      }
-
       const { image, officialStartTime = "08:00:00", officialEndTime = "17:00:00" } = req.body;
       
       if (!image) {
@@ -356,15 +387,8 @@ async function startServer() {
   });
 
   // Streaming analysis endpoint (SSE)
-  app.post("/api/analyze/stream", async (req, res) => {
+  app.post("/api/analyze/stream", strictAnalysisLimiter, async (req, res) => {
     try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(clientIp)) {
-        return res.status(429).json({ 
-          error: "تم تجاوز الحد المسموح من الطلبات. يرجى الانتظار دقيقة واحدة ثم المحاولة مرة أخرى." 
-        });
-      }
-
       const { image, officialStartTime = "08:00:00", officialEndTime = "17:00:00" } = req.body;
       
       if (!image) {
@@ -519,13 +543,8 @@ async function startServer() {
   });
 
   // API Endpoint for schedule image OCR
-  app.post("/api/analyze-schedule", async (req, res) => {
+  app.post("/api/analyze-schedule", strictAnalysisLimiter, async (req, res) => {
     try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(clientIp)) {
-        return res.status(429).json({ error: "تم تجاوز الحد المسموح. انتظر دقيقة ثم حاول مرة أخرى." });
-      }
-
       const { image, month, year } = req.body;
       if (!image) {
         return res.status(400).json({ error: "الرجاء توفير صورة جدول الدوام." });

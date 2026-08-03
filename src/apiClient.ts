@@ -92,6 +92,14 @@ export async function verifyPassword(password: string): Promise<boolean> {
   return data?.valid ?? false;
 }
 
+export async function verifyAdminPassword(password: string): Promise<boolean> {
+  const data = await apiFetch<{ valid: boolean }>("/api/verify-admin", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+  return data?.valid ?? false;
+}
+
 export async function changePassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
   const data = await apiFetch<{ ok: boolean; error?: string }>("/api/change-password", {
     method: "POST",

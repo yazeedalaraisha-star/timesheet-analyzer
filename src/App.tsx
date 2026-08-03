@@ -47,6 +47,7 @@ import {
   saveOvertimeToDB,
   fetchSchedulesFromDB,
   saveSchedulesToDB,
+  verifyAdminPassword,
 } from "./apiClient";
 import { parseTimeToSeconds } from "./utils/timeUtils";
 const OvertimeTracker = React.lazy(() => import("./components/OvertimeTracker"));
@@ -204,15 +205,26 @@ export default function App() {
 
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
 
-  const handleAdminLogin = () => {
-    if (adminPasswordInput === "admin@2026") {
-      handleLogin("admin", "يزيد العريشة");
-      setShowAdminLogin(false);
-      setAdminPasswordInput("");
-      setAdminLoginError(null);
-    } else {
+  const handleAdminLogin = async () => {
+    if (!adminPasswordInput) return;
+    setAdminLoginLoading(true);
+    setAdminLoginError(null);
+    try {
+      const valid = await verifyAdminPassword(adminPasswordInput);
+      if (valid) {
+        handleLogin("admin", "يزيد العريشة");
+        setShowAdminLogin(false);
+        setAdminPasswordInput("");
+        setAdminLoginError(null);
+      } else {
+        setAdminLoginError(t("wrongPassword"));
+      }
+    } catch {
       setAdminLoginError(t("wrongPassword"));
+    } finally {
+      setAdminLoginLoading(false);
     }
   };
 
@@ -2529,9 +2541,9 @@ export default function App() {
                 className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all">
                 {t("cancelBtn")}
               </button>
-              <button onClick={handleAdminLogin} disabled={!adminPasswordInput}
-                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${!adminPasswordInput ? "opacity-50 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700"}`}>
-                <LogIn className="h-4 w-4" />
+              <button onClick={handleAdminLogin} disabled={!adminPasswordInput || adminLoginLoading}
+                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${!adminPasswordInput || adminLoginLoading ? "opacity-50 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700"}`}>
+                {adminLoginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                 {t("login")}
               </button>
             </div>
