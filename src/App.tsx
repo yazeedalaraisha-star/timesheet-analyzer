@@ -376,7 +376,7 @@ export default function App() {
 
   // Re-apply schedule times when schedules finish loading from DB (after analysis)
   useEffect(() => {
-    if (!result || schedules.length === 0) return;
+    if (!result || schedules.length === 0 || scheduleTimesUsed) return;
 
     const matched = findEmployeeScheduleByName(schedules, result.employee_info.name);
     if (!matched) return;
@@ -388,7 +388,7 @@ export default function App() {
     setResult(newResult);
     setScheduleTimesUsed(true);
     setMatchedScheduleName(matched.employeeName);
-  }, [schedules]);
+  }, [schedules, result, shiftDefs, officialStartTime, officialEndTime, scheduleTimesUsed]);
 
   // Save history helper (localStorage)
   const saveToHistory = (newResult: TimesheetAnalysisResult) => {
@@ -462,12 +462,6 @@ export default function App() {
       setImage(compressedDataUrl);
       setImagePreview(compressedDataUrl);
 
-      const originalKB = Math.round(file.size / 1024);
-      const compressedBytes = Math.round((compressedDataUrl.length * 3) / 4);
-      const compressedKB = Math.round(compressedBytes / 1024);
-      if (compressedKB < originalKB) {
-        console.log(`[Compression] ${originalKB}KB → ${compressedKB}KB (${Math.round((1 - compressedKB / originalKB) * 100)}% reduction)`);
-      }
     } catch (err: any) {
       setError("حدث خطأ أثناء ضغط الصورة: " + (err.message || "خطأ غير معروف"));
     }
@@ -654,7 +648,7 @@ export default function App() {
       }
       setProgressMessage(null);
     } catch (err: any) {
-      console.error(err);
+      console.error("[Analyze Error]", err);
       setError(err.message || "حدث خطأ غير متوقع أثناء الاتصال بالخادم.");
     } finally {
       setLoading(false);

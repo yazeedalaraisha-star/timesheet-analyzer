@@ -23,12 +23,14 @@ if (!process.env.GEMINI_API_KEY) {
 const MAX_IMAGE_SIZE_MB = 10;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
-// Prevent crash on unhandled errors
+// Prevent crash on unhandled errors — log then exit to let Render restart
 process.on("uncaughtException", (err) => {
   console.error("[FATAL] Uncaught Exception:", err);
+  setTimeout(() => process.exit(1), 1000);
 });
 process.on("unhandledRejection", (reason) => {
   console.error("[FATAL] Unhandled Rejection:", reason);
+  setTimeout(() => process.exit(1), 1000);
 });
 
 // Simple in-memory rate limiters
@@ -537,7 +539,7 @@ async function startServer() {
       const sendEvent = (event: string, data: any) => {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
-      sendEvent("error", { message: error.message || "حدث خطأ غير متوقع أثناء معالجة كشف الدوام." });
+      sendEvent("error", { message: error.message || "حدث خطأ أثناء تحليل الصورة. تأكد من صحة الصورة والمفتاح ثم حاول مرة أخرى." });
       res.end();
     }
   });
