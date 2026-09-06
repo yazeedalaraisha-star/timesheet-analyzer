@@ -230,6 +230,14 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       setError(t("errDeductionReason"));
       return;
     }
+    if (formMode === "deduction") {
+      const isFullDay = h % 8 === 0;
+      const availableHours = selectedEmpData ? selectedEmpData.remainingHours : 0;
+      if (!isFullDay && h > availableHours) {
+        setError(t("errDeductionPartial", { available: availableHours }));
+        return;
+      }
+    }
     setError(null);
     setPendingAdd({
       id: "ot_" + Date.now(),
@@ -748,6 +756,11 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 >
                   {t("deductRemaining")}{selectedEmpData && selectedEmpData.remainingHours > 0 ? ` (${selectedEmpData.remainingHours} ${t("hoursShort")})` : ""}
                 </button>
+              </div>
+            )}
+            {formMode === "deduction" && selectedEmpData && (
+              <div className="mt-1.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                {t("empBalance", { days: selectedEmpData.days, hours: selectedEmpData.remainingHours })}
               </div>
             )}
           </div>
