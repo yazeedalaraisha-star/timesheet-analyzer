@@ -277,6 +277,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     return found ? found[1] : null;
   }, [employeeName, perEmployeeSummary]);
 
+  const empTotalHours = selectedEmpData ? selectedEmpData.days * 8 + selectedEmpData.remainingHours : 0;
+
   const summaryMaxes = useMemo(() => {
     let maxDays = 0;
     let maxDeduction = 0;
@@ -334,10 +336,10 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         daysAvailable = selectedEmpData ? selectedEmpData.days : 0;
         hoursAvailable = selectedEmpData ? selectedEmpData.remainingHours : 0;
       }
-      const isFullDay = h % 8 === 0;
-      if (isFullDay) {
-        if (h / 8 > daysAvailable) {
-          setError(t("errDeductionNotEnoughDays", { days: daysAvailable }));
+      const totalHours = daysAvailable * 8 + hoursAvailable;
+      if (h === 8) {
+        if (totalHours < 8) {
+          setError(t("deductNotEnoughBalance"));
           return;
         }
       } else {
@@ -345,7 +347,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           setError(t("errDeductionMaxTwo"));
           return;
         }
-        if (h > hoursAvailable) {
+        if (totalHours < h) {
           setError(t("errDeductionPartial", { available: hoursAvailable }));
           return;
         }
@@ -974,32 +976,28 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 <button
                   type="button"
                   onClick={() => setHours("8")}
-                  disabled={!!selectedEmpData && selectedEmpData.days < 1}
-                  title={selectedEmpData && selectedEmpData.days < 1 ? t("noFullDay") : ""}
+                  disabled={!!selectedEmpData && empTotalHours < 8}
+                  title={selectedEmpData && empTotalHours < 8 ? t("deductNotEnoughBalance") : ""}
                   className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
-                    !selectedEmpData || selectedEmpData.days >= 1
+                    !selectedEmpData || empTotalHours >= 8
                       ? "text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-950/50"
                       : "text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
                   }`}
                 >
-                  {t("deductFullDay")}{selectedEmpData && selectedEmpData.days >= 1 ? ` (${selectedEmpData.days} ${t("dayUnit")})` : ""}
+                  {t("deductEight")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (selectedEmpData && selectedEmpData.remainingHours > 0) {
-                      setHours(String(Math.min(selectedEmpData.remainingHours, 2)));
-                    }
-                  }}
-                  disabled={!selectedEmpData || selectedEmpData.remainingHours <= 0}
-                  title={selectedEmpData ? t("deductRemainingTitle", { hours: Math.min(selectedEmpData.remainingHours, 2) }) : ""}
+                  onClick={() => setHours("2")}
+                  disabled={!selectedEmpData || empTotalHours < 2}
+                  title={selectedEmpData && empTotalHours < 2 ? t("deductNotEnoughBalance") : ""}
                   className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
-                    selectedEmpData && selectedEmpData.remainingHours > 0
+                    selectedEmpData && empTotalHours >= 2
                       ? "text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-950/50"
                       : "text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
                   }`}
                 >
-                  {t("deductRemaining")}{selectedEmpData && selectedEmpData.remainingHours > 0 ? ` (${Math.min(selectedEmpData.remainingHours, 2)} ${t("hoursShort")})` : ""}
+                  {t("deductTwoHours")}
                 </button>
               </div>
             )}
