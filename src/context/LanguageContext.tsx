@@ -422,6 +422,7 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursRequired: "يرجى إدخال عدد ساعات صحيح",
     errHoursMax: "لا يمكن أن تتجاوز الساعات 24 ساعة يومياً",
     errDeductionReason: "يرجى إدخال سبب الخصم",
+    errDeductionMaxTwo: "الحد الأقصى لخصم الساعات هو ساعتين بالمرة الواحدة، أو اختر يوم كامل (8 س)",
     errDeductionPartial: "الخصم يجب أن يكون يوم كامل (8 س) أو من الساعات المتبقية ({available} س) — لا يسمح بخصم جزء من اليوم",
     errPasswordWrong: "الباسورد غير صحيح",
 
@@ -923,6 +924,7 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursRequired: "Please enter valid hours",
     errHoursMax: "Hours cannot exceed 24 per day",
     errDeductionReason: "Please enter deduction reason",
+    errDeductionMaxTwo: "Max 2 hours per hour-based deduction, or choose a full day (8h)",
     errDeductionPartial: "Deduction must be a full day (8h) or from remaining hours ({available}h) — partial day deduction is not allowed",
     errPasswordWrong: "Wrong password",
 

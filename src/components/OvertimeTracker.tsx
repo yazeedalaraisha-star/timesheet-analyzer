@@ -232,10 +232,16 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     }
     if (formMode === "deduction") {
       const isFullDay = h % 8 === 0;
-      const availableHours = selectedEmpData ? selectedEmpData.remainingHours : 0;
-      if (!isFullDay && h > availableHours) {
-        setError(t("errDeductionPartial", { available: availableHours }));
-        return;
+      if (!isFullDay) {
+        if (h > 2) {
+          setError(t("errDeductionMaxTwo"));
+          return;
+        }
+        const availableHours = selectedEmpData ? selectedEmpData.remainingHours : 0;
+        if (h > availableHours) {
+          setError(t("errDeductionPartial", { available: availableHours }));
+          return;
+        }
       }
     }
     setError(null);
@@ -743,18 +749,18 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   type="button"
                   onClick={() => {
                     if (selectedEmpData && selectedEmpData.remainingHours > 0) {
-                      setHours(String(selectedEmpData.remainingHours));
+                      setHours(String(Math.min(selectedEmpData.remainingHours, 2)));
                     }
                   }}
                   disabled={!selectedEmpData || selectedEmpData.remainingHours <= 0}
-                  title={selectedEmpData ? t("deductRemainingTitle", { hours: selectedEmpData.remainingHours }) : ""}
+                  title={selectedEmpData ? t("deductRemainingTitle", { hours: Math.min(selectedEmpData.remainingHours, 2) }) : ""}
                   className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
                     selectedEmpData && selectedEmpData.remainingHours > 0
                       ? "text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-950/50"
                       : "text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
                   }`}
                 >
-                  {t("deductRemaining")}{selectedEmpData && selectedEmpData.remainingHours > 0 ? ` (${selectedEmpData.remainingHours} ${t("hoursShort")})` : ""}
+                  {t("deductRemaining")}{selectedEmpData && selectedEmpData.remainingHours > 0 ? ` (${Math.min(selectedEmpData.remainingHours, 2)} ${t("hoursShort")})` : ""}
                 </button>
               </div>
             )}
