@@ -208,6 +208,16 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     return found ? found[1] : null;
   }, [employeeName, perEmployeeSummary]);
 
+  const summaryMaxes = useMemo(() => {
+    let maxDays = 0;
+    let maxDeduction = 0;
+    for (const [, d] of perEmployeeSummary) {
+      if (d.days > maxDays) maxDays = d.days;
+      if (d.deduction > maxDeduction) maxDeduction = d.deduction;
+    }
+    return { maxDays: Math.max(1, maxDays), maxDeduction: Math.max(1, maxDeduction) };
+  }, [perEmployeeSummary]);
+
   const handleAddClick = () => {
     const h = parseFloat(hours);
     if (!employeeName.trim()) {
@@ -639,6 +649,35 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                     <span className="text-[10px] text-slate-400 dark:text-slate-500">
                       {t("recordsCount", { count: data.entries })}
                     </span>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    <div>
+                      <div className="flex justify-between text-[9px] font-medium text-slate-500 dark:text-slate-400 mb-0.5">
+                        <span>{t("barDays")}</span>
+                        <span>{data.days}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(data.days / summaryMaxes.maxDays) * 100}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-[9px] font-medium text-slate-500 dark:text-slate-400 mb-0.5">
+                        <span>{t("barHours")}</span>
+                        <span>{data.remainingHours}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${(data.remainingHours / 8) * 100}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-[9px] font-medium text-slate-500 dark:text-slate-400 mb-0.5">
+                        <span>{t("barTaken")}</span>
+                        <span>-{data.deduction}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-rose-500 rounded-full" style={{ width: `${(data.deduction / summaryMaxes.maxDeduction) * 100}%` }} />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
