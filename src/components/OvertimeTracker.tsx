@@ -202,6 +202,12 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     return Array.from(map.entries()).sort((a, b) => b[1].net - a[1].net);
   }, [entries]);
 
+  const selectedEmpData = useMemo(() => {
+    if (!employeeName.trim()) return null;
+    const found = perEmployeeSummary.find(([name]) => name === employeeName.trim());
+    return found ? found[1] : null;
+  }, [employeeName, perEmployeeSummary]);
+
   const handleAddClick = () => {
     const h = parseFloat(hours);
     if (!employeeName.trim()) {
@@ -716,6 +722,34 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   : "border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               }`}
             />
+            {formMode === "deduction" && (
+              <div className="mt-1.5 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setHours("8")}
+                  className="flex-1 px-2 py-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-all"
+                >
+                  {t("deductFullDay")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedEmpData && selectedEmpData.remainingHours > 0) {
+                      setHours(String(selectedEmpData.remainingHours));
+                    }
+                  }}
+                  disabled={!selectedEmpData || selectedEmpData.remainingHours <= 0}
+                  title={selectedEmpData ? t("deductRemainingTitle", { hours: selectedEmpData.remainingHours }) : ""}
+                  className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                    selectedEmpData && selectedEmpData.remainingHours > 0
+                      ? "text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-950/50"
+                      : "text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
+                  }`}
+                >
+                  {t("deductRemaining")}{selectedEmpData && selectedEmpData.remainingHours > 0 ? ` (${selectedEmpData.remainingHours} ${t("hoursShort")})` : ""}
+                </button>
+              </div>
+            )}
           </div>
           {formMode === "deduction" ? (
             <div className="relative">
