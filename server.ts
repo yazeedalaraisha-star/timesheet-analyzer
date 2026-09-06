@@ -10,9 +10,6 @@ import { processAttendanceData } from "./src/analysis";
 
 dotenv.config();
 
-if (!process.env.OVERTIME_PASSWORD) {
-  console.warn("[SECURITY WARNING] OVERTIME_PASSWORD not set — falling back to known default. Set it in Render env vars before launch!");
-}
 if (!process.env.ADMIN_PASSWORD) {
   console.warn("[SECURITY WARNING] ADMIN_PASSWORD not set — admin login will use the default password. Set it in Render env vars!");
 }

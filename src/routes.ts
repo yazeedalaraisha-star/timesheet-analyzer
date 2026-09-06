@@ -26,7 +26,6 @@ function validateArray(body: any, max: number): any[] | null {
   return body;
 }
 
-const DEFAULT_PASSWORD_HASH = hashPassword(process.env.OVERTIME_PASSWORD || "ot@2026");
 const DEFAULT_ADMIN_HASH = hashPassword(process.env.ADMIN_PASSWORD || "admin@2026");
 
 const authAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -148,26 +147,7 @@ router.post("/leave-balances", async (req, res) => {
   }
 });
 
-// ========== OVERTIME PASSWORD ==========
-
-router.post("/verify-password", async (req, res) => {
-  try {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    if (!checkAuthRateLimit(ip)) {
-      return res.status(429).json({ error: "تم تجاوز الحد المسموح من المحاولات، حاول بعد 5 دقائق" });
-    }
-    const db = getDB();
-    const hashedInput = hashPassword(req.body.password || "");
-    let storedHash = DEFAULT_PASSWORD_HASH;
-    if (db) {
-      const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
-      if (doc?.value) storedHash = doc.value;
-    }
-    res.json({ valid: hashedInput === storedHash });
-  } catch (err: any) {
-    res.json({ valid: false });
-  }
-});
+// ========== AUTH ==========
 
 router.post("/verify-admin", async (req, res) => {
   try {
@@ -185,47 +165,6 @@ router.post("/verify-admin", async (req, res) => {
     res.json({ valid: hashedInput === storedHash });
   } catch (err: any) {
     res.json({ valid: false });
-  }
-});
-
-router.post("/change-password", async (req, res) => {
-  try {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    if (!checkAuthRateLimit(ip)) {
-      return res.status(429).json({ error: "تم تجاوز الحد المسموح من المحاولات، حاول بعد 5 دقائق" });
-    }
-    const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword) {
-      return res.status(400).json({ error: "الباسورد القديم والجديد مطلوبين" });
-    }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: "الباسورد الجديد لازم يكون 8 أحرف على الأقل" });
-    }
-
-    const hashedOld = hashPassword(oldPassword);
-    let currentHash = DEFAULT_PASSWORD_HASH;
-    const db = getDB();
-    if (db) {
-      const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
-      if (doc?.value) currentHash = doc.value;
-    }
-
-    if (hashedOld !== currentHash) {
-      return res.status(403).json({ error: "الباسورد القديم غير صحيح" });
-    }
-
-    const hashedNew = hashPassword(newPassword);
-    if (db) {
-      await db.collection("settings").updateOne(
-        { docId: "overtime_password" },
-        { $set: { value: hashedNew } },
-        { upsert: true }
-      );
-    }
-
-    res.json({ ok: true });
-  } catch (err: any) {
-    serverError(res, err);
   }
 });
 
