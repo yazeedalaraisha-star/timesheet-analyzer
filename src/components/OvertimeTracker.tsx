@@ -231,15 +231,22 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     if (formMode === "deduction") {
+      const cur = selectedEmpData;
+      const daysAvailable = cur ? cur.days : 0;
+      const hoursAvailable = cur ? cur.remainingHours : 0;
       const isFullDay = h % 8 === 0;
-      if (!isFullDay) {
+      if (isFullDay) {
+        if (h / 8 > daysAvailable) {
+          setError(t("errDeductionNotEnoughDays", { days: daysAvailable }));
+          return;
+        }
+      } else {
         if (h > 2) {
           setError(t("errDeductionMaxTwo"));
           return;
         }
-        const availableHours = selectedEmpData ? selectedEmpData.remainingHours : 0;
-        if (h > availableHours) {
-          setError(t("errDeductionPartial", { available: availableHours }));
+        if (h > hoursAvailable) {
+          setError(t("errDeductionPartial", { available: hoursAvailable }));
           return;
         }
       }
@@ -741,9 +748,15 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 <button
                   type="button"
                   onClick={() => setHours("8")}
-                  className="flex-1 px-2 py-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-all"
+                  disabled={!!selectedEmpData && selectedEmpData.days < 1}
+                  title={selectedEmpData && selectedEmpData.days < 1 ? t("noFullDay") : ""}
+                  className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
+                    !selectedEmpData || selectedEmpData.days >= 1
+                      ? "text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-950/50"
+                      : "text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
+                  }`}
                 >
-                  {t("deductFullDay")}
+                  {t("deductFullDay")}{selectedEmpData && selectedEmpData.days >= 1 ? ` (${selectedEmpData.days} ${t("dayUnit")})` : ""}
                 </button>
                 <button
                   type="button"

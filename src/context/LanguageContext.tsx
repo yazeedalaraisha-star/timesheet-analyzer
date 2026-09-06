@@ -390,6 +390,7 @@ const translations: Record<Lang, Record<string, string>> = {
     deductFullDay: "يوم كامل (8 س)",
     deductRemaining: "الساعات المتبقية",
     deductRemainingTitle: "خصم {hours} ساعة المتبقية",
+    noFullDay: "لا يوجد يوم كامل متوفر للخصم",
     empBalance: "رصيد: {days} يوم و {hours} ساعة",
     overtimeShort: "إضافي: {value} س",
     deductionShort: "خصومات: {value} س",
@@ -423,6 +424,7 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursMax: "لا يمكن أن تتجاوز الساعات 24 ساعة يومياً",
     errDeductionReason: "يرجى إدخال سبب الخصم",
     errDeductionMaxTwo: "الحد الأقصى لخصم الساعات هو ساعتين بالمرة الواحدة، أو اختر يوم كامل (8 س)",
+    errDeductionNotEnoughDays: "لا يمكن خصم أيام أكثر من المتوفر — المتوفر {days} يوم",
     errDeductionPartial: "الخصم يجب أن يكون يوم كامل (8 س) أو من الساعات المتبقية ({available} س) — لا يسمح بخصم جزء من اليوم",
     errPasswordWrong: "الباسورد غير صحيح",
 
@@ -894,6 +896,7 @@ const translations: Record<Lang, Record<string, string>> = {
     deductFullDay: "Full day (8h)",
     deductRemaining: "Remaining hours",
     deductRemainingTitle: "Deduct {hours} remaining hours",
+    noFullDay: "No full day available to deduct",
     empBalance: "Balance: {days} days & {hours} hours",
     overtimeShort: "OT: {value} h",
     deductionShort: "Ded: {value} h",
@@ -925,6 +928,7 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursMax: "Hours cannot exceed 24 per day",
     errDeductionReason: "Please enter deduction reason",
     errDeductionMaxTwo: "Max 2 hours per hour-based deduction, or choose a full day (8h)",
+    errDeductionNotEnoughDays: "Cannot deduct more days than available — available: {days} days",
     errDeductionPartial: "Deduction must be a full day (8h) or from remaining hours ({available}h) — partial day deduction is not allowed",
     errPasswordWrong: "Wrong password",
 
