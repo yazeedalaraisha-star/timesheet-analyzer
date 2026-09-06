@@ -76,6 +76,13 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [adminInput, setAdminInput] = useState("");
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [adminNameInput, setAdminNameInput] = useState(() => {
+    try {
+      return localStorage.getItem("ot_operator") || "";
+    } catch {
+      return "";
+    }
+  });
   const [undoStack, setUndoStack] = useState<OvertimeEntry[][]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -431,6 +438,10 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   };
 
   const handleVerifyAdmin = async () => {
+    if (!adminNameInput.trim()) {
+      setAdminError(t("errAdminNameRequired"));
+      return;
+    }
     setAdminLoading(true);
     setAdminError(null);
     const valid = await verifyAdminPassword(adminInput);
@@ -439,6 +450,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       setAdminError(t("errAdminWrong"));
       return;
     }
+    setOperator(adminNameInput.trim());
+    try { localStorage.setItem("ot_operator", adminNameInput.trim()); } catch {}
     setAdminUnlocked(true);
     try { sessionStorage.setItem("ot_admin_unlocked", "1"); } catch {}
     closePasswordModal();
@@ -1332,16 +1345,12 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
             <span>{t("activityLog")}</span>
           </h3>
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={operator}
-              onChange={(e) => {
-                setOperator(e.target.value);
-                try { localStorage.setItem("ot_operator", e.target.value); } catch {}
-              }}
-              placeholder={t("operatorName")}
-              className="w-36 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium outline-none transition-all"
-            />
+            {adminUnlocked && operator.trim() && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40 rounded-lg text-[10px] font-bold">
+                <User className="h-3 w-3" />
+                {operator.trim()}
+              </span>
+            )}
             <button
               onClick={toggleLog}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-[10px] font-bold rounded-lg transition-all"
@@ -1412,6 +1421,20 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               {t("adminUnlockDesc")}
             </p>
             <input
+              type="text"
+              value={adminNameInput}
+              onChange={(e) => setAdminNameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const pw = document.getElementById("ot-admin-pw") as HTMLInputElement | null;
+                  pw?.focus();
+                }
+              }}
+              placeholder={t("adminNamePlaceholder")}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+            />
+            <input
+              id="ot-admin-pw"
               type="password"
               value={adminInput}
               onChange={(e) => setAdminInput(e.target.value)}
@@ -1419,7 +1442,6 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 if (e.key === "Enter") handleVerifyAdmin();
               }}
               placeholder={t("passwordPlaceholder")}
-              autoFocus
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
             />
             {adminError && (
