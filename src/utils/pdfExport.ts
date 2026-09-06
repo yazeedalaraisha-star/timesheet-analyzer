@@ -573,12 +573,17 @@ export async function exportOvertimeMonthlyPDF(
   const totalNet = rows.reduce((s, r) => s + r.net, 0);
 
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-
-  const ff = "NotoNaskh";
 
   if (hasFonts) {
-    doc.setFont(ff, "bold");
+    reg(doc);
+    bld(doc);
+  }
+
+  const ff = hasFonts ? "NotoNaskh" : "helvetica";
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  if (hasFonts) {
+    useFont(doc, "bold");
   }
   doc.setFontSize(16);
   doc.setTextColor(30, 41, 59);
