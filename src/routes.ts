@@ -277,4 +277,55 @@ router.post("/policies", async (req, res) => {
   }
 });
 
+// ========== OPERATIONS LOG ==========
+
+const MAX_OPERATIONS = 500;
+
+router.get("/operations", async (_req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.json([]);
+    const logs = await db.collection("operations").find().sort({ timestamp: -1 }).limit(MAX_OPERATIONS).toArray();
+    res.json(logs);
+  } catch (err: any) {
+    serverError(res, err);
+  }
+});
+
+router.post("/operations", async (req, res) => {
+  try {
+    const db = getDB();
+    if (!db) return res.status(503).json({ error: "قاعدة البيانات غير متصلة" });
+    const log = req.body;
+    if (!log || typeof log !== "object" || typeof log.action !== "string" || typeof log.operator !== "string") {
+      return res.status(400).json({ error: "بيانات غير صالحة" });
+    }
+    const clean = {
+      action: log.action,
+      employeeName: typeof log.employeeName === "string" ? log.employeeName.slice(0, 200) : undefined,
+      hours:
+        typeof log.hours === "number" && isFinite(log.hours)
+          ? log.hours
+          : typeof log.hours === "string"
+          ? log.hours.slice(0, 50)
+          : undefined,
+      operator: log.operator.slice(0, 200),
+      date: log.date || new Date().toISOString().split("T")[0],
+      timestamp: Date.now(),
+    };
+    await db.collection("operations").insertOne(clean);
+    await db.collection("operations").deleteMany({ timestamp: { $lt: Date.now() - 90 * 24 * 60 * 60 * 1000 } });
+    const count = await db.collection("operations").countDocuments();
+    if (count > MAX_OPERATIONS) {
+      const extra = await db.collection("operations").find().sort({ timestamp: 1 }).limit(count - MAX_OPERATIONS).toArray();
+      if (extra.length > 0) {
+        await db.collection("operations").deleteMany({ _id: { $in: extra.map((x: any) => x._id) } });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    serverError(res, err);
+  }
+});
+
 export default router;

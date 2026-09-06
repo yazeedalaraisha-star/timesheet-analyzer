@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { TimesheetAnalysisResult, ScheduleViolation } from "../types";
+import { TimesheetAnalysisResult, ScheduleViolation, OvertimeEntry } from "../types";
 
 let cachedRegular: string | null = null;
 let cachedBold: string | null = null;
@@ -541,4 +541,108 @@ export async function exportViolationsPDF(
   }
 
   doc.save(`Violations_${employeeName.replace(/\s+/g, "_")}.pdf`);
+}
+
+export async function exportOvertimeMonthlyPDF(
+  entries: OvertimeEntry[],
+  monthLabel: string,
+  lang: "ar" | "en" = "ar"
+) {
+  const hasFonts = await loadFonts();
+
+  const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
+
+  const perEmployee = new Map<string, { hours: number; deduction: number }>();
+  for (const e of entries) {
+    const cur = perEmployee.get(e.employeeName) || { hours: 0, deduction: 0 };
+    if (e.type === "deduction") cur.deduction += e.hours;
+    else cur.hours += e.hours;
+    perEmployee.set(e.employeeName, cur);
+  }
+
+  const rows = Array.from(perEmployee.entries()).map(([name, d]) => {
+    const totalDays = d.hours / 8;
+    const fullDays = Math.floor(totalDays);
+    const remainingHours = d.hours - fullDays * 8;
+    const net = d.hours - d.deduction;
+    return { name, days: d.hours / 8, fullDays, remainingHours, deduction: d.deduction, net };
+  });
+
+  const totalHours = rows.reduce((s, r) => s + r.days * 8, 0);
+  const totalDeduction = rows.reduce((s, r) => s + r.deduction, 0);
+  const totalNet = rows.reduce((s, r) => s + r.net, 0);
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const ff = "NotoNaskh";
+
+  if (hasFonts) {
+    doc.setFont(ff, "bold");
+  }
+  doc.setFontSize(16);
+  doc.setTextColor(30, 41, 59);
+  doc.text(t("لائحة العمل الإضافي الشهرية", "Monthly Overtime Payroll"), pageWidth / 2, 40, { align: "center" });
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  useFont(doc, "normal");
+  doc.text(monthLabel, pageWidth / 2, 58, { align: "center" });
+
+  autoTable(doc, {
+    head: [[
+      t("#", "#"),
+      t("الموظف", "Employee"),
+      t("الإجمالي (ساعة)", "Total (hrs)"),
+      t("أيام كاملة", "Full Days"),
+      t("ساعات متبقية", "Remaining"),
+      t("الخصومات (ساعة)", "Deductions (hrs)"),
+      t("صافي الساعات", "Net (hrs)"),
+    ]],
+    body: rows.map((r, i) => [
+      String(i + 1),
+      r.name,
+      r.days * 8,
+      r.fullDays,
+      r.remainingHours,
+      r.deduction,
+      r.net,
+    ]),
+    foot: [[
+      "",
+      t("الإجمالي", "Total"),
+      totalHours,
+      "",
+      "",
+      totalDeduction,
+      totalNet,
+    ]],
+    startY: 75,
+    styles: { font: ff, fontSize: 8.5, cellPadding: 4, halign: "center" },
+    headStyles: { fillColor: [245, 158, 11], textColor: 255, fontStyle: "bold", halign: "center" },
+    footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [254, 252, 247] },
+    columnStyles: {
+      0: { cellWidth: 28 },
+      1: { cellWidth: "auto", halign: "right" },
+      2: { cellWidth: 70 },
+      3: { cellWidth: 70 },
+      4: { cellWidth: 70 },
+      5: { cellWidth: 80 },
+      6: { cellWidth: 70 },
+    },
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(150);
+    useFont(doc, "normal");
+    doc.text(
+      t(`لائحة ${monthLabel} | صفحة ${i}/${pageCount}`, `${monthLabel} Payroll | Page ${i}/${pageCount}`),
+      pageWidth / 2, doc.internal.pageSize.getHeight() - 5, { align: "center" }
+    );
+  }
+
+  doc.save(`Overtime_Payroll_${monthLabel.replace(/[\\/:*?"<>|]/g, "_")}.pdf`);
 }

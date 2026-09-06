@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus,
   Trash2,
@@ -16,10 +16,16 @@ import {
   Upload,
   Lock,
   X,
+  Undo2,
+  Pencil,
+  AlertTriangle,
+  CalendarDays,
+  History,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { OvertimeEntry } from "../types";
-import { verifyPassword } from "../apiClient";
+import { verifyPassword, addOperation, fetchOperations, OperationLog } from "../apiClient";
+import { exportOvertimeMonthlyPDF } from "../utils/pdfExport";
 import { useLang } from "../context/LanguageContext";
 
 interface Props {
@@ -28,7 +34,20 @@ interface Props {
 }
 
 export default function OvertimeTracker({ entries, onUpdate }: Props) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+
+  const [exportMonth, setExportMonth] = useState(() => new Date().toISOString().slice(0, 7));
+
+  const handleExportMonthlyPDF = async () => {
+    const monthEntries = entries.filter((e) => e.date.startsWith(exportMonth));
+    const label = monthEntries.length
+      ? new Date(exportMonth + "-01").toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", {
+          year: "numeric",
+          month: "long",
+        })
+      : t("allMonths");
+    await exportOvertimeMonthlyPDF(monthEntries.length ? monthEntries : entries, label, lang as "ar" | "en");
+  };
   const [formMode, setFormMode] = useState<"overtime" | "deduction">("overtime");
   const [employeeName, setEmployeeName] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -53,6 +72,59 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [pendingAdd, setPendingAdd] = useState<OvertimeEntry | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingClearAll, setPendingClearAll] = useState(false);
+  const [undoStack, setUndoStack] = useState<OvertimeEntry[][]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [operator, setOperator] = useState(() => {
+    try {
+      return localStorage.getItem("ot_operator") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [showLog, setShowLog] = useState(false);
+  const [operations, setOperations] = useState<OperationLog[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+
+  const logOperation = (action: string, employeeName?: string, hours?: number | string) => {
+    const op = operator.trim() || t("unknownOperator");
+    addOperation({ action, employeeName, hours, operator: op, date: new Date().toISOString().split("T")[0], timestamp: Date.now() });
+  };
+
+  const toggleLog = async () => {
+    const next = !showLog;
+    setShowLog(next);
+    if (next && operations.length === 0) {
+      setLogLoading(true);
+      const logs = await fetchOperations();
+      setOperations(logs);
+      setLogLoading(false);
+    }
+  };
+
+  const getBalanceExcluding = (name: string, excludeId: string) => {
+    let o = 0, d = 0;
+    for (const e of entries) {
+      if (e.id === excludeId) continue;
+      if (e.employeeName !== name) continue;
+      if (e.type === "deduction") d += e.hours; else o += e.hours;
+    }
+    const net = o - d;
+    return { days: Math.floor(Math.abs(net) / 8), remainingHours: Math.abs(net) % 8 };
+  };
+
+  const applyMutation = (next: OvertimeEntry[]) => {
+    setUndoStack((s) => [...s.slice(-19), entries]);
+    onUpdate(next);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    onUpdate(prev);
+    logOperation("undo");
+  };
 
   const closePasswordModal = () => {
     setShowPasswordModal(false);
@@ -218,6 +290,20 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     return { maxDays: Math.max(1, maxDays), maxDeduction: Math.max(1, maxDeduction) };
   }, [perEmployeeSummary]);
 
+  const [thresholdDays, setThresholdDays] = useState(() => {
+    const saved = localStorage.getItem("ot_threshold_days");
+    const n = saved ? parseInt(saved, 10) : 20;
+    return isNaN(n) || n <= 0 ? 20 : n;
+  });
+  useEffect(() => {
+    localStorage.setItem("ot_threshold_days", String(thresholdDays));
+  }, [thresholdDays]);
+
+  const criticalEmployees = useMemo(
+    () => perEmployeeSummary.filter(([, d]) => d.days >= thresholdDays && d.net > 0),
+    [perEmployeeSummary, thresholdDays]
+  );
+
   const handleAddClick = () => {
     const h = parseFloat(hours);
     if (!employeeName.trim()) {
@@ -241,9 +327,16 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     if (formMode === "deduction") {
-      const cur = selectedEmpData;
-      const daysAvailable = cur ? cur.days : 0;
-      const hoursAvailable = cur ? cur.remainingHours : 0;
+      let daysAvailable = 0;
+      let hoursAvailable = 0;
+      if (editingId) {
+        const bal = getBalanceExcluding(employeeName.trim(), editingId);
+        daysAvailable = bal.days;
+        hoursAvailable = bal.remainingHours;
+      } else {
+        daysAvailable = selectedEmpData ? selectedEmpData.days : 0;
+        hoursAvailable = selectedEmpData ? selectedEmpData.remainingHours : 0;
+      }
       const isFullDay = h % 8 === 0;
       if (isFullDay) {
         if (h / 8 > daysAvailable) {
@@ -263,7 +356,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     }
     setError(null);
     setPendingAdd({
-      id: "ot_" + Date.now(),
+      id: editingId || "ot_" + Date.now(),
       employeeName: employeeName.trim(),
       date,
       hours: h,
@@ -276,6 +369,31 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     setShowPasswordModal(true);
   };
 
+  const startEditing = (id: string) => {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    setEditingId(id);
+    setFormMode(entry.type === "deduction" ? "deduction" : "overtime");
+    setEmployeeName(entry.employeeName);
+    setDate(entry.date);
+    setHours(String(entry.hours));
+    setNotes(entry.notes || "");
+    setReason(entry.reason || "");
+    setError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setFormMode("overtime");
+    setEmployeeName("");
+    setDate(new Date().toISOString().split("T")[0]);
+    setHours("");
+    setNotes("");
+    setReason("");
+    setError(null);
+  };
+
   const handleVerifyAndAdd = async () => {
     setPasswordLoading(true);
     setPasswordError(null);
@@ -286,12 +404,24 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     if (pendingAdd) {
-      onUpdate([pendingAdd, ...entries]);
+      if (editingId) {
+        const original = entries.find((e) => e.id === editingId);
+        applyMutation(entries.map((e) => (e.id === editingId ? { ...pendingAdd, id: editingId } : e)));
+        logOperation(
+          "edit",
+          pendingAdd.employeeName,
+          `${original?.hours ?? 0} -> ${pendingAdd.hours}`
+        );
+      } else {
+        applyMutation([pendingAdd, ...entries]);
+        logOperation(pendingAdd.type === "deduction" ? "deduct" : "add", pendingAdd.employeeName, pendingAdd.hours);
+      }
     }
     closePasswordModal();
     setHours("");
     setNotes("");
     setReason("");
+    if (editingId) cancelEditing();
   };
 
   const handleVerifyAndDelete = async () => {
@@ -304,7 +434,9 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     if (pendingDeleteId) {
-      onUpdate(entries.filter((e) => e.id !== pendingDeleteId));
+      const target = entries.find((e) => e.id === pendingDeleteId);
+      applyMutation(entries.filter((e) => e.id !== pendingDeleteId));
+      logOperation("delete", target?.employeeName, target?.hours);
     }
     closePasswordModal();
   };
@@ -319,12 +451,15 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     if (pendingImport) {
-      onUpdate([...pendingImport, ...entries]);
+      applyMutation([...pendingImport, ...entries]);
+      logOperation("import", undefined, pendingImport.length);
     } else if (pendingClearAll) {
       if (searchQuery.trim()) {
-        onUpdate(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+        applyMutation(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+        logOperation("clearEmployee", searchQuery.trim());
       } else {
-        onUpdate([]);
+        applyMutation([]);
+        logOperation("clearAll");
       }
     }
     closePasswordModal();
@@ -611,13 +746,53 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         </div>
       </div>
 
+      {/* Balance Alert */}
+      {criticalEmployees.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4 transition-colors">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                {t("alertTitle", { threshold: thresholdDays })}
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {criticalEmployees.map(([name, d]) => (
+                  <span
+                    key={name}
+                    onClick={() => setSearchQuery(name === searchQuery ? "" : name)}
+                    className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/40 cursor-pointer hover:border-amber-400 transition-all"
+                  >
+                    {name} ({d.days} {t("dayUnit")})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Per-Employee Summary */}
       {perEmployeeSummary.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
-          <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2 mb-4">
-            <Users className="h-4 w-4 text-slate-400" />
-            <span>{t("perEmployeeSummary")}</span>
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-700 dark:text-white text-sm flex items-center gap-2">
+              <Users className="h-4 w-4 text-slate-400" />
+              <span>{t("perEmployeeSummary")}</span>
+            </h3>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{t("alertThresholdLabel")}</span>
+              <input
+                type="number"
+                min="1"
+                value={thresholdDays}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setThresholdDays(isNaN(v) || v <= 0 ? 1 : v);
+                }}
+                className="w-14 px-2 py-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {perEmployeeSummary.map(([name, data]) => (
               <div
@@ -688,10 +863,21 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
 
       {/* Add Entry Form */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
-        <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2 mb-4">
-          <Plus className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <span>{t("addNewEntry")}</span>
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+            <Plus className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <span>{editingId ? t("editEntryTitle") : t("addNewEntry")}</span>
+          </h3>
+          {editingId && (
+            <button
+              onClick={cancelEditing}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold rounded-lg transition-all"
+            >
+              <X className="h-3 w-3" />
+              {t("cancelEdit")}
+            </button>
+          )}
+        </div>
 
         {/* Mode Toggle */}
         <div className="flex gap-2 mb-4">
@@ -889,7 +1075,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           ) : (
             <Plus className="h-4 w-4" />
           )}
-          <span>{formMode === "deduction" ? t("registerDeduction") : t("addEntry")}</span>
+          <span>{editingId ? t("saveEdit") : formMode === "deduction" ? t("registerDeduction") : t("addEntry")}</span>
         </button>
       </div>
 
@@ -933,12 +1119,39 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 </>
               )}
               {entries.length > 0 && (
+                <>
+                  <input
+                    type="month"
+                    value={exportMonth}
+                    onChange={(e) => setExportMonth(e.target.value)}
+                    className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-medium outline-none transition-all"
+                    title={t("monthPicker")}
+                  />
+                  <button
+                    onClick={handleExportMonthlyPDF}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-lg transition-all"
+                    title={t("exportMonthlyTitle")}
+                  >
+                    <CalendarDays className="h-3 w-3" />
+                    {t("monthlyBtn")}
+                  </button>
+                  <button
+                    onClick={handleClearAll}
+                    className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {t("clearAllBtn")}
+                  </button>
+                </>
+              )}
+              {undoStack.length > 0 && (
                 <button
-                  onClick={handleClearAll}
-                  className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                  onClick={handleUndo}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-100 dark:border-indigo-900/40 transition-all"
+                  title={t("undoTitle")}
                 >
-                  <Trash2 className="h-3 w-3" />
-                  {t("clearAllBtn")}
+                  <Undo2 className="h-3 w-3" />
+                  {t("undoBtn")}
                 </button>
               )}
             </div>
@@ -1045,13 +1258,22 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                         {isDeduction ? (entry.reason || "-") : (entry.notes || "-")}
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleDeleteClick(entry.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
-                          title={t("deleteRecord")}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => startEditing(entry.id)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all"
+                            title={t("editRecord")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(entry.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                            title={t("deleteRecord")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1078,6 +1300,74 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         )}
       </div>
 
+      {/* Activity Log */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+            <History className="h-4 w-4 text-slate-400" />
+            <span>{t("activityLog")}</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={operator}
+              onChange={(e) => {
+                setOperator(e.target.value);
+                try { localStorage.setItem("ot_operator", e.target.value); } catch {}
+              }}
+              placeholder={t("operatorName")}
+              className="w-36 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-medium outline-none transition-all"
+            />
+            <button
+              onClick={toggleLog}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-[10px] font-bold rounded-lg transition-all"
+            >
+              <History className="h-3 w-3" />
+              {showLog ? t("hideLog") : t("showLog")}
+            </button>
+          </div>
+        </div>
+        {showLog && (
+          <div className="mt-3 space-y-1.5 max-h-72 overflow-y-auto">
+            {logLoading ? (
+              <p className="text-xs text-slate-400 p-2">{t("logLoading")}</p>
+            ) : operations.length === 0 ? (
+              <p className="text-xs text-slate-400 p-2">{t("logEmpty")}</p>
+            ) : (
+              operations.map((op, idx) => (
+                <div
+                  key={op._id || idx}
+                  className="flex items-center gap-2 p-2 rounded-lg bg-slate-50/50 dark:bg-slate-800/20 border border-slate-100 dark:border-slate-800 text-xs"
+                >
+                  <span className="flex items-center gap-1 font-bold shrink-0 text-slate-700 dark:text-slate-200">
+                    {op.action === "add" ? (
+                      <Plus className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                    ) : op.action === "deduct" ? (
+                      <TrendingDown className="h-3 w-3 text-rose-600 dark:text-rose-400" />
+                    ) : op.action === "delete" ? (
+                      <Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400" />
+                    ) : op.action === "edit" ? (
+                      <Pencil className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                    ) : op.action === "undo" ? (
+                      <Undo2 className="h-3 w-3 text-slate-500" />
+                    ) : (
+                      <CalendarDays className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    )}
+                    {t("op_" + op.action)}
+                  </span>
+                  {op.employeeName && <span className="font-bold text-slate-600 dark:text-slate-300 truncate">{op.employeeName}</span>}
+                  {op.hours !== undefined && <span className="text-slate-500 dark:text-slate-400 shrink-0">{op.hours} {t("hourUnit")}</span>}
+                  <span className="ml-auto shrink-0 text-slate-400 dark:text-slate-500">{op.operator}</span>
+                  <span className="shrink-0 text-slate-400 dark:text-slate-500">
+                    {new Date(op.timestamp).toLocaleString(lang === "ar" ? "ar-EG" : "en-GB")}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Password Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in-up">
@@ -1092,6 +1382,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                     ? t("passwordConfirmImport")
                     : pendingClearAll
                     ? t("passwordConfirmClearAll")
+                    : editingId
+                    ? t("passwordConfirmEdit")
                     : pendingAdd?.type === "deduction"
                     ? t("passwordConfirmDeduction")
                     : t("passwordConfirmAdd")}
@@ -1167,6 +1459,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                   t("confirmImport")
                 ) : pendingClearAll ? (
                   t("clearAllBtn")
+                ) : editingId ? (
+                  t("saveEdit")
                 ) : pendingAdd?.type === "deduction" ? (
                   t("confirmDeduction")
                 ) : (

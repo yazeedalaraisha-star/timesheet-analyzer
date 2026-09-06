@@ -120,3 +120,26 @@ export async function analyzeScheduleImage(base64Image: string, month: number, y
   });
   return data;
 }
+
+export interface OperationLog {
+  _id?: string;
+  action: string;
+  employeeName?: string;
+  hours?: number | string;
+  operator: string;
+  date: string;
+  timestamp: number;
+}
+
+export async function fetchOperations(): Promise<OperationLog[]> {
+  const data = await apiFetch<OperationLog[]>("/api/operations");
+  return data ?? [];
+}
+
+export async function addOperation(log: OperationLog): Promise<boolean> {
+  const data = await apiFetch<{ ok: boolean }>("/api/operations", {
+    method: "POST",
+    body: JSON.stringify(log),
+  });
+  return data?.ok ?? false;
+}
