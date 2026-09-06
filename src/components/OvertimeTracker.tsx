@@ -21,10 +21,11 @@ import {
   AlertTriangle,
   CalendarDays,
   History,
+  Eye,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { OvertimeEntry } from "../types";
-import { verifyPassword, addOperation, fetchOperations, OperationLog } from "../apiClient";
+import { addOperation, fetchOperations, OperationLog, verifyAdminPassword } from "../apiClient";
 import { exportOvertimeMonthlyPDF } from "../utils/pdfExport";
 import { useLang } from "../context/LanguageContext";
 
@@ -64,14 +65,17 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [pendingImport, setPendingImport] = useState<OvertimeEntry[] | null>(null);
-  const [pendingAdd, setPendingAdd] = useState<OvertimeEntry | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [pendingClearAll, setPendingClearAll] = useState(false);
+  const [adminUnlocked, setAdminUnlocked] = useState(() => {
+    try {
+      return sessionStorage.getItem("ot_admin_unlocked") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminInput, setAdminInput] = useState("");
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
   const [undoStack, setUndoStack] = useState<OvertimeEntry[][]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -127,13 +131,9 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   };
 
   const closePasswordModal = () => {
-    setShowPasswordModal(false);
-    setPasswordInput("");
-    setPasswordError(null);
-    setPendingImport(null);
-    setPendingAdd(null);
-    setPendingDeleteId(null);
-    setPendingClearAll(false);
+    setShowAdminModal(false);
+    setAdminInput("");
+    setAdminError(null);
   };
 
   const REASON_PRESETS = [t("reasonPreset1"), t("reasonPreset2"), t("reasonPreset3")];
@@ -196,10 +196,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       }
       if (newEntries.length > 0) {
         if (window.confirm(t("importFoundRecords", { count: newEntries.length }))) {
-          setPendingImport(newEntries);
-          setPasswordInput("");
-          setPasswordError(null);
-          setShowPasswordModal(true);
+          handleImportParse(newEntries);
         }
       }
       if (errors.length > 0) {
@@ -355,7 +352,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       }
     }
     setError(null);
-    setPendingAdd({
+    const entry: OvertimeEntry = {
       id: editingId || "ot_" + Date.now(),
       employeeName: employeeName.trim(),
       date,
@@ -363,10 +360,19 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       notes: notes.trim(),
       type: formMode,
       reason: formMode === "deduction" ? reason.trim() : undefined,
-    });
-    setPasswordInput("");
-    setPasswordError(null);
-    setShowPasswordModal(true);
+    };
+    if (editingId) {
+      const original = entries.find((e) => e.id === editingId);
+      applyMutation(entries.map((e) => (e.id === editingId ? { ...entry, id: editingId } : e)));
+      logOperation("edit", entry.employeeName, `${original?.hours ?? 0} -> ${entry.hours}`);
+    } else {
+      applyMutation([entry, ...entries]);
+      logOperation(formMode === "deduction" ? "deduct" : "add", entry.employeeName, entry.hours);
+    }
+    setHours("");
+    setNotes("");
+    setReason("");
+    if (editingId) cancelEditing();
   };
 
   const startEditing = (id: string) => {
@@ -394,82 +400,11 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     setError(null);
   };
 
-  const handleVerifyAndAdd = async () => {
-    setPasswordLoading(true);
-    setPasswordError(null);
-    const valid = await verifyPassword(passwordInput);
-    setPasswordLoading(false);
-    if (!valid) {
-      setPasswordError(t("errPasswordWrong"));
-      return;
-    }
-    if (pendingAdd) {
-      if (editingId) {
-        const original = entries.find((e) => e.id === editingId);
-        applyMutation(entries.map((e) => (e.id === editingId ? { ...pendingAdd, id: editingId } : e)));
-        logOperation(
-          "edit",
-          pendingAdd.employeeName,
-          `${original?.hours ?? 0} -> ${pendingAdd.hours}`
-        );
-      } else {
-        applyMutation([pendingAdd, ...entries]);
-        logOperation(pendingAdd.type === "deduction" ? "deduct" : "add", pendingAdd.employeeName, pendingAdd.hours);
-      }
-    }
-    closePasswordModal();
-    setHours("");
-    setNotes("");
-    setReason("");
-    if (editingId) cancelEditing();
-  };
-
-  const handleVerifyAndDelete = async () => {
-    setPasswordLoading(true);
-    setPasswordError(null);
-    const valid = await verifyPassword(passwordInput);
-    setPasswordLoading(false);
-    if (!valid) {
-      setPasswordError(t("errPasswordWrong"));
-      return;
-    }
-    if (pendingDeleteId) {
-      const target = entries.find((e) => e.id === pendingDeleteId);
-      applyMutation(entries.filter((e) => e.id !== pendingDeleteId));
-      logOperation("delete", target?.employeeName, target?.hours);
-    }
-    closePasswordModal();
-  };
-
-  const handleVerifyAndImport = async () => {
-    setPasswordLoading(true);
-    setPasswordError(null);
-    const valid = await verifyPassword(passwordInput);
-    setPasswordLoading(false);
-    if (!valid) {
-      setPasswordError(t("errPasswordWrong"));
-      return;
-    }
-    if (pendingImport) {
-      applyMutation([...pendingImport, ...entries]);
-      logOperation("import", undefined, pendingImport.length);
-    } else if (pendingClearAll) {
-      if (searchQuery.trim()) {
-        applyMutation(entries.filter((e) => e.employeeName !== searchQuery.trim()));
-        logOperation("clearEmployee", searchQuery.trim());
-      } else {
-        applyMutation([]);
-        logOperation("clearAll");
-      }
-    }
-    closePasswordModal();
-  };
-
   const handleDeleteClick = (id: string) => {
-    setPendingDeleteId(id);
-    setPasswordInput("");
-    setPasswordError(null);
-    setShowPasswordModal(true);
+    if (!window.confirm(t("confirmDeleteRecord"))) return;
+    const target = entries.find((e) => e.id === id);
+    applyMutation(entries.filter((e) => e.id !== id));
+    logOperation("delete", target?.employeeName, target?.hours);
   };
 
   const handleClearAll = () => {
@@ -479,11 +414,44 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     if (!searchQuery.trim() && !window.confirm(t("confirmDeleteAll"))) {
       return;
     }
-    setPendingClearAll(true);
-    setPendingImport(null);
-    setPasswordInput("");
-    setPasswordError(null);
-    setShowPasswordModal(true);
+    if (searchQuery.trim()) {
+      applyMutation(entries.filter((e) => e.employeeName !== searchQuery.trim()));
+      logOperation("clearEmployee", searchQuery.trim());
+    } else {
+      applyMutation([]);
+      logOperation("clearAll");
+    }
+  };
+
+  const handleImportParse = (parsed: OvertimeEntry[]) => {
+    applyMutation([...parsed, ...entries]);
+    logOperation("import", undefined, parsed.length);
+  };
+
+  const handleVerifyAdmin = async () => {
+    setAdminLoading(true);
+    setAdminError(null);
+    const valid = await verifyAdminPassword(adminInput);
+    setAdminLoading(false);
+    if (!valid) {
+      setAdminError(t("errAdminWrong"));
+      return;
+    }
+    setAdminUnlocked(true);
+    try { sessionStorage.setItem("ot_admin_unlocked", "1"); } catch {}
+    closePasswordModal();
+  };
+
+  const handleLockAdmin = () => {
+    setAdminUnlocked(false);
+    try { sessionStorage.removeItem("ot_admin_unlocked"); } catch {}
+    setEditingId(null);
+    setFormMode("overtime");
+    setEmployeeName("");
+    setHours("");
+    setNotes("");
+    setReason("");
+    setError(null);
   };
 
   const handleExportCSV = () => {
@@ -631,19 +599,32 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
         <div className="p-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl">
+            <div className={`p-3 rounded-xl ${adminUnlocked ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}>
               <Clock className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-800 dark:text-white">
-                {t("overtimeTitle")}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-black text-slate-800 dark:text-white">
+                  {t("overtimeTitle")}
+                </h2>
+                {adminUnlocked ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40 text-[10px] font-bold">
+                    <Lock className="h-3 w-3" />
+                    {t("adminModeBadge")}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/40 text-[10px] font-bold">
+                    <Eye className="h-3 w-3" />
+                    {t("browseModeBadge")}
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                 {t("overtimeSubtitle")}
               </p>
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="flex justify-end gap-2 mt-4 flex-wrap">
             <input
               ref={csvInputRef}
               type="file"
@@ -651,13 +632,32 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               className="hidden"
               onChange={handleCSVImport}
             />
-            <button
-              onClick={() => csvInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
-            >
-          <Upload className="h-3.5 w-3.5" />
-          <span>{t("importCsvExcel")}</span>
-            </button>
+            {adminUnlocked ? (
+              <>
+                <button
+                  onClick={() => csvInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>{t("importCsvExcel")}</span>
+                </button>
+                <button
+                  onClick={handleLockAdmin}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-lg border border-rose-200 dark:border-rose-900/40 transition-all"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>{t("exitAdminMode")}</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowAdminModal(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                <span>{t("unlockAdminBtn")}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -862,6 +862,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       )}
 
       {/* Add Entry Form */}
+      {adminUnlocked ? (
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm p-5 transition-colors">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
@@ -1078,6 +1079,24 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           <span>{editingId ? t("saveEdit") : formMode === "deduction" ? t("registerDeduction") : t("addEntry")}</span>
         </button>
       </div>
+      ) : (
+        <button
+          onClick={() => setShowAdminModal(true)}
+          className="w-full bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-8 flex flex-col items-center gap-3 transition-all hover:border-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 group"
+        >
+          <div className="p-3 bg-slate-100 dark:bg-slate-800 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-950/40 text-slate-400 group-hover:text-emerald-500 rounded-xl transition-all">
+            <Lock className="h-6 w-6" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("lockNoticeTitle")}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("lockNoticeDesc")}</p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all">
+            <Lock className="h-3.5 w-3.5" />
+            {t("unlockAdminBtn")}
+          </span>
+        </button>
+      )}
 
       {/* Entries Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
@@ -1135,16 +1154,18 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                     <CalendarDays className="h-3 w-3" />
                     {t("monthlyBtn")}
                   </button>
-                  <button
-                    onClick={handleClearAll}
-                    className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    {t("clearAllBtn")}
-                  </button>
                 </>
               )}
-              {undoStack.length > 0 && (
+              {adminUnlocked && entries.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 font-medium hover:underline flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {t("clearAllBtn")}
+                </button>
+              )}
+              {adminUnlocked && undoStack.length > 0 && (
                 <button
                   onClick={handleUndo}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-100 dark:border-indigo-900/40 transition-all"
@@ -1259,20 +1280,25 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => startEditing(entry.id)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all"
-                            title={t("editRecord")}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(entry.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
-                            title={t("deleteRecord")}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {adminUnlocked && (
+                            <>
+                              <button
+                                onClick={() => startEditing(entry.id)}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all"
+                                title={t("editRecord")}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(entry.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                                title={t("deleteRecord")}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                          {!adminUnlocked && <span title={t("lockedActionsHint")} className="text-slate-300 dark:text-slate-600"><Lock className="h-4 w-4" /></span>}
                         </div>
                       </td>
                     </tr>
@@ -1368,26 +1394,14 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         )}
       </div>
 
-      {/* Password Modal */}
-      {showPasswordModal && (
+      {/* Admin Unlock Modal */}
+      {showAdminModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in-up">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <Lock className="h-4 w-4 text-amber-600" />
-                <span>
-                  {pendingDeleteId
-                    ? t("passwordConfirmDelete")
-                    : pendingImport
-                    ? t("passwordConfirmImport")
-                    : pendingClearAll
-                    ? t("passwordConfirmClearAll")
-                    : editingId
-                    ? t("passwordConfirmEdit")
-                    : pendingAdd?.type === "deduction"
-                    ? t("passwordConfirmDeduction")
-                    : t("passwordConfirmAdd")}
-                </span>
+                <Lock className="h-4 w-4 text-emerald-600" />
+                <span>{t("adminUnlockTitle")}</span>
               </h3>
               <button
                 onClick={closePasswordModal}
@@ -1397,34 +1411,22 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {pendingDeleteId
-                ? t("passwordDeleteDesc")
-                : pendingImport
-                ? t("passwordImportDesc", { count: pendingImport.length })
-                : pendingClearAll
-                ? t("passwordClearAllDesc")
-                : pendingAdd?.type === "deduction"
-                ? t("passwordDeductionDesc")
-                : t("passwordAddDesc")}
+              {t("adminUnlockDesc")}
             </p>
             <input
               type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
+              value={adminInput}
+              onChange={(e) => setAdminInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  if (pendingDeleteId) { handleVerifyAndDelete(); }
-                  else if (pendingImport || pendingClearAll) { handleVerifyAndImport(); }
-                  else { handleVerifyAndAdd(); }
-                }
+                if (e.key === "Enter") handleVerifyAdmin();
               }}
               placeholder={t("passwordPlaceholder")}
               autoFocus
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
             />
-            {passwordError && (
+            {adminError && (
               <div className="p-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl">
-                {passwordError}
+                {adminError}
               </div>
             )}
             <div className="flex gap-2">
@@ -1435,36 +1437,16 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 {t("cancelBtn")}
               </button>
               <button
-                onClick={() => {
-                  if (pendingDeleteId) { handleVerifyAndDelete(); }
-                  else if (pendingImport || pendingClearAll) { handleVerifyAndImport(); }
-                  else { handleVerifyAndAdd(); }
-                }}
-                disabled={passwordLoading || !passwordInput}
-                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  pendingDeleteId || pendingAdd?.type === "deduction"
-                    ? "bg-rose-600 hover:bg-rose-700"
-                    : pendingClearAll
-                    ? "bg-rose-600 hover:bg-rose-700"
-                    : pendingImport
-                    ? "bg-indigo-600 hover:bg-indigo-700"
-                    : "bg-emerald-600 hover:bg-emerald-700"
-                } ${passwordLoading || !passwordInput ? "opacity-50 cursor-not-allowed" : ""}`}
+                onClick={handleVerifyAdmin}
+                disabled={adminLoading || !adminInput}
+                className={`flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  adminLoading || !adminInput ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               >
-                {passwordLoading ? (
+                {adminLoading ? (
                   <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                ) : pendingDeleteId ? (
-                  t("delete")
-                ) : pendingImport ? (
-                  t("confirmImport")
-                ) : pendingClearAll ? (
-                  t("clearAllBtn")
-                ) : editingId ? (
-                  t("saveEdit")
-                ) : pendingAdd?.type === "deduction" ? (
-                  t("confirmDeduction")
                 ) : (
-                  t("confirmAdd")
+                  t("unlockConfirm")
                 )}
               </button>
             </div>
