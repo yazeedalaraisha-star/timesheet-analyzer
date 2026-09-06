@@ -84,6 +84,14 @@ export async function saveOvertimeToDB(entries: OvertimeEntry[]): Promise<boolea
   return data?.ok ?? false;
 }
 
+export async function verifyPassword(password: string): Promise<boolean> {
+  const data = await apiFetch<{ valid: boolean }>("/api/verify-password", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+  return data?.valid ?? false;
+}
+
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   const data = await apiFetch<{ valid: boolean }>("/api/verify-admin", {
     method: "POST",

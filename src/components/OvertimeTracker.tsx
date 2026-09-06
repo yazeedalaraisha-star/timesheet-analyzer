@@ -14,9 +14,12 @@ import {
   Download,
   ArrowDownUp,
   Upload,
+  Lock,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { OvertimeEntry } from "../types";
+import { verifyPassword } from "../apiClient";
 import { useLang } from "../context/LanguageContext";
 
 interface Props {
@@ -42,6 +45,24 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [pendingImport, setPendingImport] = useState<OvertimeEntry[] | null>(null);
+  const [pendingAdd, setPendingAdd] = useState<OvertimeEntry | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingClearAll, setPendingClearAll] = useState(false);
+
+  const closePasswordModal = () => {
+    setShowPasswordModal(false);
+    setPasswordInput("");
+    setPasswordError(null);
+    setPendingImport(null);
+    setPendingAdd(null);
+    setPendingDeleteId(null);
+    setPendingClearAll(false);
+  };
 
   const REASON_PRESETS = [t("reasonPreset1"), t("reasonPreset2"), t("reasonPreset3")];
 
@@ -103,7 +124,10 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       }
       if (newEntries.length > 0) {
         if (window.confirm(t("importFoundRecords", { count: newEntries.length }))) {
-          onUpdate([...newEntries, ...entries]);
+          setPendingImport(newEntries);
+          setPasswordInput("");
+          setPasswordError(null);
+          setShowPasswordModal(true);
         }
       }
       if (errors.length > 0) {
@@ -199,7 +223,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       return;
     }
     setError(null);
-    const newEntry: OvertimeEntry = {
+    setPendingAdd({
       id: "ot_" + Date.now(),
       employeeName: employeeName.trim(),
       date,
@@ -207,30 +231,85 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       notes: notes.trim(),
       type: formMode,
       reason: formMode === "deduction" ? reason.trim() : undefined,
-    };
+    });
+    setPasswordInput("");
+    setPasswordError(null);
+    setShowPasswordModal(true);
+  };
 
-    onUpdate([newEntry, ...entries]);
+  const handleVerifyAndAdd = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+    if (!valid) {
+      setPasswordError(t("errPasswordWrong"));
+      return;
+    }
+    if (pendingAdd) {
+      onUpdate([pendingAdd, ...entries]);
+    }
+    closePasswordModal();
     setHours("");
     setNotes("");
     setReason("");
   };
 
-  const handleDeleteClick = (id: string) => {
-    if (window.confirm(t("deleteConfirm"))) {
-      onUpdate(entries.filter((e) => e.id !== id));
+  const handleVerifyAndDelete = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+    if (!valid) {
+      setPasswordError(t("errPasswordWrong"));
+      return;
     }
+    if (pendingDeleteId) {
+      onUpdate(entries.filter((e) => e.id !== pendingDeleteId));
+    }
+    closePasswordModal();
   };
 
-  const handleClearAll = () => {
-    if (searchQuery.trim()) {
-      if (window.confirm(t("confirmDeleteRecords", { name: searchQuery.trim() }))) {
+  const handleVerifyAndImport = async () => {
+    setPasswordLoading(true);
+    setPasswordError(null);
+    const valid = await verifyPassword(passwordInput);
+    setPasswordLoading(false);
+    if (!valid) {
+      setPasswordError(t("errPasswordWrong"));
+      return;
+    }
+    if (pendingImport) {
+      onUpdate([...pendingImport, ...entries]);
+    } else if (pendingClearAll) {
+      if (searchQuery.trim()) {
         onUpdate(entries.filter((e) => e.employeeName !== searchQuery.trim()));
-      }
-    } else {
-      if (window.confirm(t("confirmDeleteAll"))) {
+      } else {
         onUpdate([]);
       }
     }
+    closePasswordModal();
+  };
+
+  const handleDeleteClick = (id: string) => {
+    setPendingDeleteId(id);
+    setPasswordInput("");
+    setPasswordError(null);
+    setShowPasswordModal(true);
+  };
+
+  const handleClearAll = () => {
+    if (searchQuery.trim() && !window.confirm(t("confirmDeleteRecords", { name: searchQuery.trim() }))) {
+      return;
+    }
+    if (!searchQuery.trim() && !window.confirm(t("confirmDeleteAll"))) {
+      return;
+    }
+    setPendingClearAll(true);
+    setPendingImport(null);
+    setPasswordInput("");
+    setPasswordError(null);
+    setShowPasswordModal(true);
   };
 
   const handleExportCSV = () => {
@@ -887,6 +966,106 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           </div>
         )}
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in-up">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                <Lock className="h-4 w-4 text-amber-600" />
+                <span>
+                  {pendingDeleteId
+                    ? t("passwordConfirmDelete")
+                    : pendingImport
+                    ? t("passwordConfirmImport")
+                    : pendingClearAll
+                    ? t("passwordConfirmClearAll")
+                    : pendingAdd?.type === "deduction"
+                    ? t("passwordConfirmDeduction")
+                    : t("passwordConfirmAdd")}
+                </span>
+              </h3>
+              <button
+                onClick={closePasswordModal}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {pendingDeleteId
+                ? t("passwordDeleteDesc")
+                : pendingImport
+                ? t("passwordImportDesc", { count: pendingImport.length })
+                : pendingClearAll
+                ? t("passwordClearAllDesc")
+                : pendingAdd?.type === "deduction"
+                ? t("passwordDeductionDesc")
+                : t("passwordAddDesc")}
+            </p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (pendingDeleteId) { handleVerifyAndDelete(); }
+                  else if (pendingImport || pendingClearAll) { handleVerifyAndImport(); }
+                  else { handleVerifyAndAdd(); }
+                }
+              }}
+              placeholder={t("passwordPlaceholder")}
+              autoFocus
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all"
+            />
+            {passwordError && (
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-xs rounded-xl">
+                {passwordError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={closePasswordModal}
+                className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl transition-all"
+              >
+                {t("cancelBtn")}
+              </button>
+              <button
+                onClick={() => {
+                  if (pendingDeleteId) { handleVerifyAndDelete(); }
+                  else if (pendingImport || pendingClearAll) { handleVerifyAndImport(); }
+                  else { handleVerifyAndAdd(); }
+                }}
+                disabled={passwordLoading || !passwordInput}
+                className={`flex-1 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  pendingDeleteId || pendingAdd?.type === "deduction"
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : pendingClearAll
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : pendingImport
+                    ? "bg-indigo-600 hover:bg-indigo-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                } ${passwordLoading || !passwordInput ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {passwordLoading ? (
+                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                ) : pendingDeleteId ? (
+                  t("delete")
+                ) : pendingImport ? (
+                  t("confirmImport")
+                ) : pendingClearAll ? (
+                  t("clearAllBtn")
+                ) : pendingAdd?.type === "deduction" ? (
+                  t("confirmDeduction")
+                ) : (
+                  t("confirmAdd")
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

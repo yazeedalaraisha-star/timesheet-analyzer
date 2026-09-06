@@ -27,6 +27,7 @@ function validateArray(body: any, max: number): any[] | null {
 }
 
 const DEFAULT_ADMIN_HASH = hashPassword(process.env.ADMIN_PASSWORD || "admin@2026");
+const DEFAULT_OVERTIME_HASH = hashPassword(process.env.OVERTIME_PASSWORD || "YAzeed");
 
 const authAttempts = new Map<string, { count: number; resetAt: number }>();
 
@@ -148,6 +149,25 @@ router.post("/leave-balances", async (req, res) => {
 });
 
 // ========== AUTH ==========
+
+router.post("/verify-password", async (req, res) => {
+  try {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkAuthRateLimit(ip)) {
+      return res.status(429).json({ error: "تم تجاوز الحد المسموح من المحاولات، حاول بعد 5 دقائق" });
+    }
+    const db = getDB();
+    const hashedInput = hashPassword(req.body.password || "");
+    let storedHash = DEFAULT_OVERTIME_HASH;
+    if (db) {
+      const doc = await db.collection("settings").findOne({ docId: "overtime_password" });
+      if (doc?.value) storedHash = doc.value;
+    }
+    res.json({ valid: hashedInput === storedHash });
+  } catch (err: any) {
+    res.json({ valid: false });
+  }
+});
 
 router.post("/verify-admin", async (req, res) => {
   try {

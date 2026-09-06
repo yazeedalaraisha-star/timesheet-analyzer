@@ -10,6 +10,9 @@ import { processAttendanceData } from "./src/analysis";
 
 dotenv.config();
 
+if (!process.env.OVERTIME_PASSWORD) {
+  console.warn("[SECURITY WARNING] OVERTIME_PASSWORD not set — overtime password defaults to 'YAzeed'. Set it in Render env vars to change!");
+}
 if (!process.env.ADMIN_PASSWORD) {
   console.warn("[SECURITY WARNING] ADMIN_PASSWORD not set — admin login will use the default password. Set it in Render env vars!");
 }
