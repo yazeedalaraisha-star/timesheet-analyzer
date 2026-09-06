@@ -386,6 +386,7 @@ const translations: Record<Lang, Record<string, string>> = {
 
     // Per-Employee Summary
     perEmployeeSummary: "ملخص كل موظف",
+    dayWithCount: "{count} يوم",
     overtimeShort: "إضافي: {value} س",
     deductionShort: "خصومات: {value} س",
     netShort: "صافي: {value} س",
@@ -883,6 +884,7 @@ const translations: Record<Lang, Record<string, string>> = {
     hoursUnit: "hours",
 
     perEmployeeSummary: "Per-Employee Summary",
+    dayWithCount: "{count} days",
     overtimeShort: "OT: {value} h",
     deductionShort: "Ded: {value} h",
     netShort: "Net: {value} h",

@@ -175,7 +175,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
   const perEmployeeSummary = useMemo(() => {
     const map = new Map<
       string,
-      { overtime: number; deduction: number; net: number; days: number; entries: number }
+      { overtime: number; deduction: number; net: number; days: number; remainingHours: number; entries: number }
     >();
     for (const e of entries) {
       const existing = map.get(e.employeeName) || {
@@ -183,6 +183,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
         deduction: 0,
         net: 0,
         days: 0,
+        remainingHours: 0,
         entries: 0,
       };
       if (e.type === "deduction") {
@@ -196,6 +197,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
     for (const [, data] of map) {
       data.net = data.overtime - data.deduction;
       data.days = Math.floor(Math.abs(data.net) / 8);
+      data.remainingHours = Math.abs(data.net) % 8;
     }
     return Array.from(map.entries()).sort((a, b) => b[1].net - a[1].net);
   }, [entries]);
@@ -592,6 +594,10 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{name}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                      {t("dayWithCount", { count: data.days })}
+                      {data.remainingHours > 0 ? ` + ${data.remainingHours} ${t("hoursShort")}` : ""}
+                    </span>
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">
                       +{data.overtime} {t("hoursShort")}
                     </span>
