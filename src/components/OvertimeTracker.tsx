@@ -355,7 +355,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
           return;
         }
         if (totalHours < h) {
-          setError(t("errDeductionPartial", { available: hoursAvailable }));
+          setError(t("errDeductionPartial", { available: totalHours }));
           return;
         }
       }
@@ -529,7 +529,8 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       }
     } catch {}
 
-    if (fontRegular && fontBold) {
+    const fontOk = !!(fontRegular && fontBold);
+    if (fontOk) {
       doc.addFileToVFS("NotoNaskhArabic-Regular.ttf", fontRegular);
       doc.addFileToVFS("NotoNaskhArabic-Bold.ttf", fontBold);
       doc.addFont("NotoNaskhArabic-Regular.ttf", "NotoArabic", "normal");
@@ -575,7 +576,7 @@ export default function OvertimeTracker({ entries, onUpdate }: Props) {
       startY,
       theme: "grid",
       styles: {
-        font: "NotoArabic",
+        font: fontOk ? "NotoArabic" : "helvetica",
         fontSize: 8,
         halign: "center",
         cellPadding: 3,

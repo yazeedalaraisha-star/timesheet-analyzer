@@ -435,9 +435,9 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursRequired: "يرجى إدخال عدد ساعات صحيح",
     errHoursMax: "لا يمكن أن تتجاوز الساعات 24 ساعة يومياً",
     errDeductionReason: "يرجى إدخال سبب الخصم",
-    errDeductionMaxTwo: "الحد الأقصى لخصم الساعات هو ساعتين بالمرة الواحدة، أو اختر يوم كامل (8 س)",
+    errDeductionMaxTwo: "الحد الأقصى للخصم بالمرة الواحدة: ساعتين أو 8 ساعات كاملة",
     errDeductionNotEnoughDays: "لا يمكن خصم أيام أكثر من المتوفر — المتوفر {days} يوم",
-    errDeductionPartial: "الخصم يجب أن يكون يوم كامل (8 س) أو من الساعات المتبقية ({available} س) — لا يسمح بخصم جزء من اليوم",
+    errDeductionPartial: "الخصم أكبر من الرصيد المتاح — المتوفر {available} ساعة",
     errPasswordWrong: "الباسورد غير صحيح",
 
     // Entries Table
@@ -497,6 +497,7 @@ const translations: Record<Lang, Record<string, string>> = {
     totalDays: "{count} يوم",
 
     // Confirm Dialogs
+    confirmDeleteRecord: "هل أنت متأكد من حذف هذا السجل؟",
     confirmDeleteRecords: "هل أنت متأكد من حذف جميع سجلات العمل الإضافي لـ {name}؟",
     confirmDeleteAll: "هل أنت متأكد من حذف جميع سجلات العمل الإضافي لجميع الموظفين؟",
 
@@ -986,9 +987,9 @@ const translations: Record<Lang, Record<string, string>> = {
     errHoursRequired: "Please enter valid hours",
     errHoursMax: "Hours cannot exceed 24 per day",
     errDeductionReason: "Please enter deduction reason",
-    errDeductionMaxTwo: "Max 2 hours per hour-based deduction, or choose a full day (8h)",
+    errDeductionMaxTwo: "Max deduction per transaction: 2 hours or a full 8 hours",
     errDeductionNotEnoughDays: "Cannot deduct more days than available — available: {days} days",
-    errDeductionPartial: "Deduction must be a full day (8h) or from remaining hours ({available}h) — partial day deduction is not allowed",
+    errDeductionPartial: "Deduction exceeds available balance — available: {available} hours",
     errPasswordWrong: "Wrong password",
 
     recordsTitle: "Records",
@@ -1046,6 +1047,7 @@ const translations: Record<Lang, Record<string, string>> = {
     totalNet: "Net: {net} hours",
     totalDays: "{count} days",
 
+    confirmDeleteRecord: "Are you sure you want to delete this record?",
     confirmDeleteRecords: "Are you sure you want to delete all records for {name}?",
     confirmDeleteAll: "Are you sure you want to delete all overtime records?",
 
