@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, ReactNode } from "react";
 
-// The app ships a single navy/cyan glass theme, so dark mode is always on.
+// The app ships a single black/lime glass theme, so dark mode is always on.
 // Printing temporarily drops it so paper output keeps the light palette.
 interface ThemeContextType {
   dark: boolean;

@@ -21,22 +21,22 @@
   --color-danger: #e17055;
   --color-info: #74b9ff;
 
-  /* Brand: navy #0B1F3A + cyan #00D4FF */
-  --color-navy: #0B1F3A;
-  --color-cyan: #00D4FF;
+  /* Brand: black #111111 + lime #B6FF00 */
+  --color-ink: #111111;
+  --color-lime: #B6FF00;
 
-  /* Indigo / violet / purple / blue / sky all become the cyan accent. */
-  --color-indigo-50: #e6fbff;
-  --color-indigo-100: #c7f5ff;
-  --color-indigo-200: #94ecff;
-  --color-indigo-300: #5ce1ff;
-  --color-indigo-400: #2ed8ff;
-  --color-indigo-500: #00d4ff;
-  --color-indigo-600: #00c2eb;
-  --color-indigo-700: #00a3c7;
-  --color-indigo-800: #007a96;
-  --color-indigo-900: #00566b;
-  --color-indigo-950: #003645;
+  /* Indigo / violet / purple / blue / sky all become the lime accent. */
+  --color-indigo-50: #f6ffe0;
+  --color-indigo-100: #ebffb8;
+  --color-indigo-200: #dcff80;
+  --color-indigo-300: #ccff4d;
+  --color-indigo-400: #c1ff26;
+  --color-indigo-500: #b6ff00;
+  --color-indigo-600: #a3e600;
+  --color-indigo-700: #8ac200;
+  --color-indigo-800: #6b9600;
+  --color-indigo-900: #4d6b00;
+  --color-indigo-950: #2e4000;
   --color-violet-50: var(--color-indigo-50);
   --color-violet-100: var(--color-indigo-100);
   --color-violet-200: var(--color-indigo-200);
@@ -76,46 +76,46 @@
 html {
   direction: rtl;
   scroll-behavior: smooth;
-  background: #06142a;
+  background: #0a0a0a;
   color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
 
 body {
-  background: #06142a;
+  background: #0a0a0a;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ───────────── Glassmorphism theme (navy + cyan) ───────────── */
+/* ───────────── Glassmorphism theme (black + lime) ───────────── */
 
 :root.dark {
-  /* Slate is remapped to a navy-glass scale. Scoped to .dark so print
+  /* Slate is remapped to a graphite-glass scale. Scoped to .dark so print
      and image exports (which drop .dark) keep the stock light palette. 700–900 are translucent "glass" layers and 50–600 are text tints. */
-  --color-slate-50: #f2f8ff;
-  --color-slate-100: #e3eefa;
-  --color-slate-200: #c9d8ec;
-  --color-slate-300: #a5bad5;
-  --color-slate-400: #8299b9;
-  --color-slate-500: #63799a;
-  --color-slate-600: #46607f;
+  --color-slate-50: #f5f5f5;
+  --color-slate-100: #ececec;
+  --color-slate-200: #d4d4d4;
+  --color-slate-300: #b0b0b0;
+  --color-slate-400: #8f8f8f;
+  --color-slate-500: #707070;
+  --color-slate-600: #525252;
   --color-slate-700: rgb(255 255 255 / 0.16);
   --color-slate-800: rgb(255 255 255 / 0.075);
-  --color-slate-900: rgb(14 38 70 / 0.55);
-  --color-slate-950: #06142a;
+  --color-slate-900: rgb(28 28 28 / 0.55);
+  --color-slate-950: #0a0a0a;
 }
 
-/* Ambient backdrop: deep navy with soft cyan glows, fixed behind everything. */
+/* Ambient backdrop: near-black with soft lime glows, fixed behind everything. */
 .glass-backdrop {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 85% -10%, rgb(0 212 255 / 0.22), transparent 60%),
-    radial-gradient(50rem 36rem at -10% 35%, rgb(0 140 255 / 0.16), transparent 60%),
-    radial-gradient(44rem 30rem at 70% 110%, rgb(0 212 255 / 0.12), transparent 60%),
-    linear-gradient(180deg, #0b1f3a 0%, #081a33 45%, #06142a 100%);
+    radial-gradient(60rem 40rem at 85% -10%, rgb(182 255 0 / 0.13), transparent 60%),
+    radial-gradient(50rem 36rem at -10% 35%, rgb(120 200 0 / 0.08), transparent 60%),
+    radial-gradient(44rem 30rem at 70% 110%, rgb(182 255 0 / 0.07), transparent 60%),
+    linear-gradient(180deg, #111111 0%, #0d0d0d 45%, #0a0a0a 100%);
 }
 
 /* Cards and panels: frosted glass with a hairline highlight. */
@@ -130,27 +130,27 @@ body {
     0 10px 30px -12px rgb(0 0 0 / 0.55);
 }
 
-/* Inputs: lighter glass with a cyan focus ring. */
+/* Inputs: lighter glass with a lime focus ring. */
 .dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .dark select,
 .dark textarea {
   color-scheme: dark;
 }
 .dark select option {
-  background: #0b1f3a;
-  color: #e3eefa;
+  background: #111111;
+  color: #ececec;
 }
 .dark input:focus,
 .dark select:focus,
 .dark textarea:focus {
   outline: none;
-  border-color: rgb(0 212 255 / 0.6) !important;
-  box-shadow: 0 0 0 3px rgb(0 212 255 / 0.18);
+  border-color: rgb(182 255 0 / 0.6) !important;
+  box-shadow: 0 0 0 3px rgb(182 255 0 / 0.18);
 }
 
-/* Cyan buttons read best with navy text. */
+/* Lime buttons read best with black text. */
 .dark .text-white:is(.bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-violet-600, .bg-blue-600, .bg-purple-600) {
-  color: #0b1f3a;
+  color: #111111;
 }
 
 /* iOS-style press feedback on everything tappable. */
@@ -167,7 +167,7 @@ button:not(:disabled):active,
 }
 
 ::selection {
-  background: rgb(0 212 255 / 0.35);
+  background: rgb(182 255 0 / 0.35);
   color: #ffffff;
 }
 
@@ -180,7 +180,7 @@ button:not(:disabled):active,
 /* Bottom tab bar (iPhone-style floating capsule). Opaque enough that content
    underneath never shows through, while keeping a glass edge. */
 .tab-bar {
-  background: rgb(6 20 42 / 0.97);
+  background: rgb(10 10 10 / 0.97);
   -webkit-backdrop-filter: blur(30px) saturate(180%);
   backdrop-filter: blur(30px) saturate(180%);
   border: 1px solid rgb(255 255 255 / 0.10);
@@ -329,7 +329,7 @@ button:not(:disabled):active,
 
 /* Smooth focus outlines for accessibility */
 :focus-visible {
-  outline: 2px solid #00d4ff;
+  outline: 2px solid #b6ff00;
   outline-offset: 2px;
   border-radius: 4px;
 }

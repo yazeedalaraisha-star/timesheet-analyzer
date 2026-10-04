@@ -1057,11 +1057,11 @@ export default function App() {
       </a>
 
       {/* Header Bar */}
-      <header id="app-header" className="pt-safe sticky top-0 z-40 bg-white/95 dark:bg-[#06142a]/80 backdrop-blur-2xl backdrop-saturate-150 border-b border-slate-200/60 dark:border-white/[0.06] print:hidden">
+      <header id="app-header" className="pt-safe sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0a]/80 backdrop-blur-2xl backdrop-saturate-150 border-b border-slate-200/60 dark:border-white/[0.06] print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
           
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-[#00D4FF] to-[#0090c0] rounded-xl text-[#0B1F3A] shadow-[0_6px_18px_-6px_rgba(0,212,255,0.7)]">
+            <div className="p-2.5 bg-gradient-to-br from-[#B6FF00] to-[#8ac200] rounded-xl text-[#111111] shadow-[0_6px_18px_-6px_rgba(182,255,0,0.7)]">
               <FileText className="h-5 w-5" />
             </div>
             <div>
@@ -1408,7 +1408,7 @@ export default function App() {
                       ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed" 
                       : !image 
                         ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                        : "bg-slate-700 hover:bg-slate-800 dark:bg-[#00D4FF] dark:hover:bg-[#33DDFF] text-white dark:text-[#0B1F3A] shadow-[0_8px_24px_-8px_rgba(0,212,255,0.6)] active:scale-[0.98]"
+                        : "bg-slate-700 hover:bg-slate-800 dark:bg-[#B6FF00] dark:hover:bg-[#C5FF33] text-white dark:text-[#111111] shadow-[0_8px_24px_-8px_rgba(182,255,0,0.6)] active:scale-[0.98]"
                   }`}
                 >
                   {loading ? (
@@ -2530,13 +2530,13 @@ export default function App() {
                 type="button"
                 onClick={() => switchView(key)}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-[22px] py-2 text-[10.5px] font-bold ${active ? "text-[#00D4FF]" : "text-slate-400 hover:text-slate-200"}`}
+                className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-[22px] py-2 text-[10.5px] font-bold ${active ? "text-[#B6FF00]" : "text-slate-400 hover:text-slate-200"}`}
               >
                 {active && (
                   <motion.span
                     layoutId="tab-pill"
                     transition={IOS_SPRING}
-                    className="absolute inset-0 rounded-[22px] bg-[#00D4FF]/[0.14] ring-1 ring-inset ring-[#00D4FF]/25"
+                    className="absolute inset-0 rounded-[22px] bg-[#B6FF00]/[0.14] ring-1 ring-inset ring-[#B6FF00]/25"
                   />
                 )}
                 <motion.span

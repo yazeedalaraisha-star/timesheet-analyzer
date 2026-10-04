@@ -8,7 +8,7 @@
     "errorPath": "offline.html"
   },
   "android": {
-    "backgroundColor": "#0B1F3A",
+    "backgroundColor": "#111111",
     "allowMixedContent": false,
     "captureInput": true,
     "webContentsDebuggingEnabled": false,

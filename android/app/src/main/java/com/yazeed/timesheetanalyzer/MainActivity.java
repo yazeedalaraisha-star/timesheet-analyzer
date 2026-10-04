@@ -13,7 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FileSaverPlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Light status/navigation bar icons on the navy background.
+        // Light status/navigation bar icons on the black background.
         WindowInsetsControllerCompat insets = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         insets.setAppearanceLightStatusBars(false);
         insets.setAppearanceLightNavigationBars(false);
