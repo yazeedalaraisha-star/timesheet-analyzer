@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
+import { IS_APP } from "../utils/appShell";
 import { EmployeeSchedule, DaySchedule, SHIFT_NAMES, SHIFT_COLORS, DEFAULT_SHIFT_DEFINITIONS, ARABIC_DAYS, Shift } from "../types";
 import { analyzeScheduleImage } from "../apiClient";
 import { useLang } from "../context/LanguageContext";
@@ -636,7 +637,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const handleExportImage = async () => {
     if (!gridRef.current) return;
     try {
-      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: (doc) => doc.documentElement.classList.remove("dark") });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: IS_APP ? (doc) => doc.documentElement.classList.remove("dark") : undefined });
       const link = document.createElement("a");
       link.download = `${t("filePrefix")}${selectedDept || ""}_${monthLabel}.png`;
       link.href = canvas.toDataURL("image/png");
@@ -647,7 +648,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const handleExportPDF = async () => {
     if (!gridRef.current) return;
     try {
-      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: (doc) => doc.documentElement.classList.remove("dark") });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: IS_APP ? (doc) => doc.documentElement.classList.remove("dark") : undefined });
       const { default: jsPDF } = await import("jspdf");
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({

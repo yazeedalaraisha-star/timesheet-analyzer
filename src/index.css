@@ -20,12 +20,20 @@
   --color-warning: #fdcb6e;
   --color-danger: #e17055;
   --color-info: #74b9ff;
+}
 
-  /* Brand: black #111111 + lime #B6FF00 */
-  --color-ink: #111111;
-  --color-lime: #B6FF00;
+/* Custom CSS to handle Right-to-Left (RTL) styling and smooth scroll */
+html {
+  direction: rtl;
+  scroll-behavior: smooth;
+}
 
-  /* Indigo / violet / purple / blue / sky all become the lime accent. */
+/* ═════════════ Android app shell: black #111111 + lime #B6FF00 glass ═════════════
+   Everything below applies only inside the Android app (html.app-shell, set in
+   src/utils/appShell.ts). The website keeps its original look. */
+
+:root.app-shell {
+  /* Indigo / violet / purple / blue become the lime accent. */
   --color-indigo-50: #f6ffe0;
   --color-indigo-100: #ebffb8;
   --color-indigo-200: #dcff80;
@@ -72,26 +80,10 @@
   --color-blue-950: var(--color-indigo-950);
 }
 
-/* Custom CSS to handle Right-to-Left (RTL) styling and smooth scroll */
-html {
-  direction: rtl;
-  scroll-behavior: smooth;
-  background: #0a0a0a;
-  color-scheme: dark;
-  -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: none;
-}
-
-body {
-  background: #0a0a0a;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ───────────── Glassmorphism theme (black + lime) ───────────── */
-
-:root.dark {
-  /* Slate is remapped to a graphite-glass scale. Scoped to .dark so print
-     and image exports (which drop .dark) keep the stock light palette. 700–900 are translucent "glass" layers and 50–600 are text tints. */
+/* Slate becomes a graphite-glass scale. Scoped to .dark so print and image
+   exports (which drop .dark) keep the stock light palette. 700–900 are
+   translucent "glass" layers and 50–600 are text tints. */
+:root.app-shell.dark {
   --color-slate-50: #f5f5f5;
   --color-slate-100: #ececec;
   --color-slate-200: #d4d4d4;
@@ -103,6 +95,22 @@ body {
   --color-slate-800: rgb(255 255 255 / 0.075);
   --color-slate-900: rgb(28 28 28 / 0.55);
   --color-slate-950: #0a0a0a;
+}
+
+html.app-shell {
+  background: #0a0a0a;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+html.app-shell body {
+  background: #0a0a0a;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell :focus-visible {
+  outline-color: #b6ff00;
 }
 
 /* Ambient backdrop: near-black with soft lime glows, fixed behind everything. */
@@ -119,9 +127,9 @@ body {
 }
 
 /* Cards and panels: frosted glass with a hairline highlight. */
-.dark [class*="rounded-xl"].dark\:bg-slate-900,
-.dark [class*="rounded-2xl"].dark\:bg-slate-900,
-.dark [class*="rounded-3xl"].dark\:bg-slate-900 {
+.app-shell.dark [class*="rounded-xl"].dark\:bg-slate-900,
+.app-shell.dark [class*="rounded-2xl"].dark\:bg-slate-900,
+.app-shell.dark [class*="rounded-3xl"].dark\:bg-slate-900 {
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   backdrop-filter: blur(22px) saturate(160%);
   border-color: rgb(255 255 255 / 0.09);
@@ -131,48 +139,48 @@ body {
 }
 
 /* Inputs: lighter glass with a lime focus ring. */
-.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-.dark select,
-.dark textarea {
+.app-shell.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.app-shell.dark select,
+.app-shell.dark textarea {
   color-scheme: dark;
 }
-.dark select option {
+.app-shell.dark select option {
   background: #111111;
   color: #ececec;
 }
-.dark input:focus,
-.dark select:focus,
-.dark textarea:focus {
+.app-shell.dark input:focus,
+.app-shell.dark select:focus,
+.app-shell.dark textarea:focus {
   outline: none;
   border-color: rgb(182 255 0 / 0.6) !important;
   box-shadow: 0 0 0 3px rgb(182 255 0 / 0.18);
 }
 
 /* Lime buttons read best with black text. */
-.dark .text-white:is(.bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-violet-600, .bg-blue-600, .bg-purple-600) {
+.app-shell.dark .text-white:is(.bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-violet-600, .bg-blue-600, .bg-purple-600) {
   color: #111111;
 }
 
 /* iOS-style press feedback on everything tappable. */
-button,
-[role="button"],
-a {
+.app-shell button,
+.app-shell [role="button"],
+.app-shell a {
   transition-property: color, background-color, border-color, opacity, box-shadow, transform;
   transition-duration: 180ms;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
-button:not(:disabled):active,
-[role="button"]:active {
+.app-shell button:not(:disabled):active,
+.app-shell [role="button"]:active {
   transform: scale(0.96);
 }
 
-::selection {
+.app-shell ::selection {
   background: rgb(182 255 0 / 0.35);
   color: #ffffff;
 }
 
 /* Thin, unobtrusive scrollbars. */
-* {
+.app-shell * {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.18) transparent;
 }
@@ -199,13 +207,14 @@ button:not(:disabled):active,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
+
 
 @keyframes fade-in-down {
   from {
@@ -329,7 +338,7 @@ button:not(:disabled):active,
 
 /* Smooth focus outlines for accessibility */
 :focus-visible {
-  outline: 2px solid #b6ff00;
+  outline: 2px solid #6366f1;
   outline-offset: 2px;
   border-radius: 4px;
 }
