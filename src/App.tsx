@@ -1061,9 +1061,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
           
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-[#B6FF00] to-[#8ac200] rounded-xl text-[#111111] shadow-[0_6px_18px_-6px_rgba(182,255,0,0.7)]">
-              <FileText className="h-5 w-5" />
-            </div>
+            <img src="/logo.svg" alt="" width={44} height={44} className="h-11 w-11 rounded-[12px] shadow-[0_8px_22px_-8px_rgba(182,255,0,0.45)]" />
             <div>
               <h1 className="text-lg font-extrabold tracking-tight text-slate-800 dark:text-white">
                 محلل كشوفات الدوام
