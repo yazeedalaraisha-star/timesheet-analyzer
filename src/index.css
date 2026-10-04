@@ -28,6 +28,194 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ═════════════ Android app shell: black #111111 + lime #B6FF00 glass ═════════════
+   Everything below applies only inside the Android app (html.app-shell, set in
+   src/utils/appShell.ts). The website keeps its original look. */
+
+:root.app-shell {
+  /* Indigo / violet / purple / blue become the lime accent. */
+  --color-indigo-50: #f6ffe0;
+  --color-indigo-100: #ebffb8;
+  --color-indigo-200: #dcff80;
+  --color-indigo-300: #ccff4d;
+  --color-indigo-400: #c1ff26;
+  --color-indigo-500: #b6ff00;
+  --color-indigo-600: #a3e600;
+  --color-indigo-700: #8ac200;
+  --color-indigo-800: #6b9600;
+  --color-indigo-900: #4d6b00;
+  --color-indigo-950: #2e4000;
+  --color-violet-50: var(--color-indigo-50);
+  --color-violet-100: var(--color-indigo-100);
+  --color-violet-200: var(--color-indigo-200);
+  --color-violet-300: var(--color-indigo-300);
+  --color-violet-400: var(--color-indigo-400);
+  --color-violet-500: var(--color-indigo-500);
+  --color-violet-600: var(--color-indigo-600);
+  --color-violet-700: var(--color-indigo-700);
+  --color-violet-800: var(--color-indigo-800);
+  --color-violet-900: var(--color-indigo-900);
+  --color-violet-950: var(--color-indigo-950);
+  --color-purple-50: var(--color-indigo-50);
+  --color-purple-100: var(--color-indigo-100);
+  --color-purple-200: var(--color-indigo-200);
+  --color-purple-300: var(--color-indigo-300);
+  --color-purple-400: var(--color-indigo-400);
+  --color-purple-500: var(--color-indigo-500);
+  --color-purple-600: var(--color-indigo-600);
+  --color-purple-700: var(--color-indigo-700);
+  --color-purple-800: var(--color-indigo-800);
+  --color-purple-900: var(--color-indigo-900);
+  --color-purple-950: var(--color-indigo-950);
+  --color-blue-50: var(--color-indigo-50);
+  --color-blue-100: var(--color-indigo-100);
+  --color-blue-200: var(--color-indigo-200);
+  --color-blue-300: var(--color-indigo-300);
+  --color-blue-400: var(--color-indigo-400);
+  --color-blue-500: var(--color-indigo-500);
+  --color-blue-600: var(--color-indigo-600);
+  --color-blue-700: var(--color-indigo-700);
+  --color-blue-800: var(--color-indigo-800);
+  --color-blue-900: var(--color-indigo-900);
+  --color-blue-950: var(--color-indigo-950);
+}
+
+/* Slate becomes a graphite-glass scale. Scoped to .dark so print and image
+   exports (which drop .dark) keep the stock light palette. 700–900 are
+   translucent "glass" layers and 50–600 are text tints. */
+:root.app-shell.dark {
+  --color-slate-50: #f5f5f5;
+  --color-slate-100: #ececec;
+  --color-slate-200: #d4d4d4;
+  --color-slate-300: #b0b0b0;
+  --color-slate-400: #8f8f8f;
+  --color-slate-500: #707070;
+  --color-slate-600: #525252;
+  --color-slate-700: rgb(255 255 255 / 0.16);
+  --color-slate-800: rgb(255 255 255 / 0.075);
+  --color-slate-900: rgb(28 28 28 / 0.55);
+  --color-slate-950: #0a0a0a;
+}
+
+html.app-shell {
+  background: #0a0a0a;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+html.app-shell body {
+  background: #0a0a0a;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell :focus-visible {
+  outline-color: #b6ff00;
+}
+
+/* Ambient backdrop: near-black with soft lime glows, fixed behind everything. */
+.glass-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 85% -10%, rgb(182 255 0 / 0.13), transparent 60%),
+    radial-gradient(50rem 36rem at -10% 35%, rgb(120 200 0 / 0.08), transparent 60%),
+    radial-gradient(44rem 30rem at 70% 110%, rgb(182 255 0 / 0.07), transparent 60%),
+    linear-gradient(180deg, #111111 0%, #0d0d0d 45%, #0a0a0a 100%);
+}
+
+/* Cards and panels: frosted glass with a hairline highlight. */
+.app-shell.dark [class*="rounded-xl"].dark\:bg-slate-900,
+.app-shell.dark [class*="rounded-2xl"].dark\:bg-slate-900,
+.app-shell.dark [class*="rounded-3xl"].dark\:bg-slate-900 {
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  border-color: rgb(255 255 255 / 0.09);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 10px 30px -12px rgb(0 0 0 / 0.55);
+}
+
+/* Inputs: lighter glass with a lime focus ring. */
+.app-shell.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.app-shell.dark select,
+.app-shell.dark textarea {
+  color-scheme: dark;
+}
+.app-shell.dark select option {
+  background: #111111;
+  color: #ececec;
+}
+.app-shell.dark input:focus,
+.app-shell.dark select:focus,
+.app-shell.dark textarea:focus {
+  outline: none;
+  border-color: rgb(182 255 0 / 0.6) !important;
+  box-shadow: 0 0 0 3px rgb(182 255 0 / 0.18);
+}
+
+/* Lime buttons read best with black text. */
+.app-shell.dark .text-white:is(.bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-violet-600, .bg-blue-600, .bg-purple-600) {
+  color: #111111;
+}
+
+/* iOS-style press feedback on everything tappable. */
+.app-shell button,
+.app-shell [role="button"],
+.app-shell a {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.app-shell button:not(:disabled):active,
+.app-shell [role="button"]:active {
+  transform: scale(0.96);
+}
+
+.app-shell ::selection {
+  background: rgb(182 255 0 / 0.35);
+  color: #ffffff;
+}
+
+/* Thin, unobtrusive scrollbars. */
+.app-shell * {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+/* Bottom tab bar (iPhone-style floating capsule). Opaque enough that content
+   underneath never shows through, while keeping a glass edge. */
+.tab-bar {
+  background: rgb(10 10 10 / 0.97);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.10);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 18px 40px -10px rgb(0 0 0 / 0.75),
+    0 0 0 0.5px rgb(0 0 0 / 0.6);
+}
+
+.pb-tabbar {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 7rem);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
 @keyframes fade-in-down {
   from {
     opacity: 0;
@@ -56,6 +244,11 @@ html {
     -webkit-print-color-adjust: exact !important;
     color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .glass-backdrop,
+  .tab-bar {
+    display: none !important;
   }
 
   body {

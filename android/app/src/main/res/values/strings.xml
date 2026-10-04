@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">محلل الدوام</string>
+    <string name="title_activity_main">محلل الدوام</string>
+    <string name="package_name">com.yazeed.timesheetanalyzer</string>
+    <string name="custom_url_scheme">com.yazeed.timesheetanalyzer</string>
+</resources>

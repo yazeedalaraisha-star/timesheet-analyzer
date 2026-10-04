@@ -1,0 +1,18 @@
+{
+  "appId": "com.yazeed.timesheetanalyzer",
+  "appName": "محلل الدوام",
+  "webDir": "mobile/www",
+  "server": {
+    "url": "https://timesheet-analyzer.onrender.com",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#111111",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "adjustMarginsForEdgeToEdge": "auto",
+    "appendUserAgent": "TimesheetAnalyzerApp"
+  }
+}

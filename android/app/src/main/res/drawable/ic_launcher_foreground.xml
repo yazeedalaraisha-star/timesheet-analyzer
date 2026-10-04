@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App mark: a watch dial with a check mark for hands. Mirrors public/logo.svg in flat colors
+     (vector gradients need API 24, minSdk is 23). Sits inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="54" android:translateY="54" android:scaleX="0.2" android:scaleY="0.2">
+        <path android:pathData="M-146,0 a146,146 0 1,0 292,0 a146,146 0 1,0 -292,0" android:strokeColor="#B6FF00" android:strokeAlpha="0.45" android:strokeWidth="3" android:fillColor="#00000000" />
+        <path android:pathData="M-128,0 a128,128 0 1,0 256,0 a128,128 0 1,0 -256,0" android:strokeColor="#B6FF00" android:strokeWidth="12" android:fillColor="#00000000" />
+        <path android:pathData="M48.0,-83.1 L54.0,-93.5 M83.1,-48.0 L93.5,-54.0 M83.1,48.0 L93.5,54.0 M48.0,83.1 L54.0,93.5 M-48.0,83.1 L-54.0,93.5 M-83.1,48.0 L-93.5,54.0 M-83.1,-48.0 L-93.5,-54.0 M-48.0,-83.1 L-54.0,-93.5" android:strokeColor="#B6FF00" android:strokeAlpha="0.55" android:strokeWidth="4" android:strokeLineCap="round" />
+        <path android:pathData="M86.0,-0.0 L110.0,-0.0 M0.0,86.0 L0.0,110.0 M-86.0,0.0 L-110.0,0.0" android:strokeColor="#B6FF00" android:strokeWidth="9" android:strokeLineCap="round" />
+        <path android:pathData="M0,-112 L11,-97 L0,-82 L-11,-97 Z" android:fillColor="#B6FF00" />
+        <path android:pathData="M-52,6 L-14,44 L60,-48" android:strokeColor="#B6FF00" android:strokeWidth="22" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+    </group>
+</vector>

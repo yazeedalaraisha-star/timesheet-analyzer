@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Upload, 
   FileText, 
@@ -37,6 +38,7 @@ import { compareScheduleToFingerprint, findEmployeeScheduleByName, buildSchedule
 import { processAttendanceData, GRACE_PERIOD_MINUTES } from "./analysis";
 import { useLang } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
+import { IS_APP } from "./utils/appShell";
 import {
   checkDBStatus,
   fetchReports,
@@ -140,6 +142,12 @@ const compressImage = (file: File, maxWidth = 2400, quality = 0.92): Promise<str
   });
 };
 
+type ViewMode = "main" | "overtime" | "schedule";
+const VIEW_ORDER: ViewMode[] = ["main", "schedule", "overtime"];
+
+// iOS-like spring used for page and tab transitions.
+const IOS_SPRING = { type: "spring", stiffness: 380, damping: 34, mass: 0.9 } as const;
+
 const TIME_OPTIONS = Array.from({ length: 48 }).map((_, index) => {
   const hours = Math.floor(index / 2);
   const minutes = (index % 2) * 30;
@@ -172,8 +180,18 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  type ViewMode = "main" | "overtime" | "schedule";
   const [viewMode, setViewMode] = useState<ViewMode>("main");
+  const [viewDirection, setViewDirection] = useState(1);
+  const switchView = (next: ViewMode) => {
+    if (next === viewMode) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    setViewDirection(VIEW_ORDER.indexOf(next) > VIEW_ORDER.indexOf(viewMode) ? 1 : -1);
+    setViewMode(next);
+    try { navigator.vibrate?.(8); } catch {}
+    window.scrollTo({ top: 0 });
+  };
 
   // Auth state — default is viewer (no login needed)
   const [authRole, setAuthRole] = useState<UserRole | null>(() => {
@@ -1035,7 +1053,10 @@ export default function App() {
   }) || [];
 
   return (
-    <div id="app-root" className="min-h-screen bg-[#f5f6f8] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-slate-200 selection:text-slate-900 transition-colors duration-200">
+    <div id="app-root" className={IS_APP
+      ? "relative min-h-screen bg-[#f5f6f8] dark:bg-transparent text-slate-800 dark:text-slate-100 font-sans"
+      : "min-h-screen bg-[#f5f6f8] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans selection:bg-slate-200 selection:text-slate-900 transition-colors duration-200"}>
+      {IS_APP && <div className="glass-backdrop print:hidden" aria-hidden="true" />}
       
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-xl focus:text-sm focus:font-bold">
@@ -1043,13 +1064,21 @@ export default function App() {
       </a>
 
       {/* Header Bar */}
-      <header id="app-header" className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800 shadow-sm print:hidden transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <header id="app-header" className={IS_APP
+        ? "pt-safe sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0a]/80 backdrop-blur-2xl backdrop-saturate-150 border-b border-slate-200/60 dark:border-white/[0.06] print:hidden"
+        : "sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800 shadow-sm print:hidden transition-colors"}>
+        <div className={IS_APP
+          ? "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3"
+          : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4"}>
           
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-slate-700 dark:bg-slate-600 rounded-xl text-white">
-              <FileText className="h-5 w-5" />
-            </div>
+            {IS_APP ? (
+              <img src="/logo.svg" alt="" width={44} height={44} className="h-11 w-11 rounded-[12px] shadow-[0_8px_22px_-8px_rgba(182,255,0,0.45)]" />
+            ) : (
+              <div className="p-2.5 bg-slate-700 dark:bg-slate-600 rounded-xl text-white">
+                <FileText className="h-5 w-5" />
+              </div>
+            )}
             <div>
               <h1 className="text-lg font-extrabold tracking-tight text-slate-800 dark:text-white">
                 محلل كشوفات الدوام
@@ -1097,7 +1126,8 @@ export default function App() {
               {dbAvailable ? "MongoDB" : "Local"}
             </div>
 
-            {/* View Mode Navigation */}
+            {/* View Mode Navigation (website; the app uses the bottom tab bar) */}
+            {!IS_APP && (
             <div className="hidden sm:flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
               <button onClick={() => setViewMode("main")} className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === "main" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`} title={t("appTitle")}>
                 <FileText className="h-3.5 w-3.5 inline ml-1" />
@@ -1112,17 +1142,21 @@ export default function App() {
                 {t("tabOvertime")}
               </button>
             </div>
+            )}
 
             {/* Language Toggle */}
             <button
               onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-              className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
+              className={IS_APP
+                ? "p-2 text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all"
+                : "p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"}
               title={t("switchLang")}
             >
               <Globe className="h-4 w-4" />
             </button>
 
-            {/* Dark Mode Toggle */}
+            {/* Dark Mode Toggle (website only; the app is always dark) */}
+            {!IS_APP && (
             <button
               onClick={toggleTheme}
               className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
@@ -1130,6 +1164,7 @@ export default function App() {
             >
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
+            )}
 
             <a 
               href="#instructions" 
@@ -1144,8 +1179,22 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" tabIndex={-1}>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <main id="main-content" className={`${IS_APP ? "relative z-10 " : ""}max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6`} tabIndex={-1}>
+        <AnimatePresence mode="wait" initial={false} custom={viewDirection}>
+        <motion.div
+          key={viewMode}
+          custom={viewDirection}
+          variants={{
+            enter: (dir: number) => ({ opacity: 0, x: (lang === "ar" ? -1 : 1) * dir * 28, scale: 0.985 }),
+            center: { opacity: 1, x: 0, scale: 1 },
+            exit: (dir: number) => ({ opacity: 0, x: (lang === "ar" ? 1 : -1) * dir * 20, scale: 0.99 }),
+          }}
+          initial={IS_APP ? "enter" : false}
+          animate="center"
+          exit={IS_APP ? "exit" : undefined}
+          transition={{ ...IOS_SPRING, opacity: { duration: 0.18 } }}
+          className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
+        >
           
           {/* Overtime View */}
           {viewMode === "overtime" && (
@@ -1295,11 +1344,11 @@ export default function App() {
                         <button
                           type="button"
                           onClick={handleReset}
-                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200/60 transition-all"
+                          className={IS_APP ? "px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 dark:border-rose-900/40 text-xs font-semibold rounded-lg border border-rose-200/60 transition-all" : "px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200/60 transition-all"}
                         >
                           {t("remove")}
                         </button>
-                        <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer">
+                        <label className={IS_APP ? "px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-200 dark:border-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer" : "px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer"}>
                           {t("changeImage")}
                           <input 
                             id="file-input-change"
@@ -1402,10 +1451,12 @@ export default function App() {
                   aria-busy={loading}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
                     loading 
-                      ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
+                      ? (IS_APP ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed" : "bg-slate-100 text-slate-400 cursor-not-allowed") 
                       : !image 
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white active:scale-[0.98]"
+                        ? (IS_APP ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed" : "bg-slate-100 text-slate-400 cursor-not-allowed")
+                        : IS_APP
+                          ? "bg-slate-700 hover:bg-slate-800 dark:bg-[#B6FF00] dark:hover:bg-[#C5FF33] text-white dark:text-[#111111] shadow-[0_8px_24px_-8px_rgba(182,255,0,0.6)] active:scale-[0.98]"
+                          : "bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white active:scale-[0.98]"
                   }`}
                 >
                   {loading ? (
@@ -1507,7 +1558,7 @@ export default function App() {
                       <div className="flex items-center gap-2 print:hidden">
                         <button
                           onClick={handlePrint}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
+                          className={IS_APP ? "inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-200 dark:border-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all" : "inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"}
                         >
                           <Printer className="h-3.5 w-3.5" />
                           <span>{t("print")}</span>
@@ -1542,7 +1593,7 @@ export default function App() {
                         
                         <button
                           onClick={() => setShowRawJson(!showRawJson)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"
+                          className={IS_APP ? "inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-200 dark:border-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all" : "inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 transition-all"}
                         >
                           {showRawJson ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                           <span>{showRawJson ? t("hideJson") : t("showJson")}</span>
@@ -2332,8 +2383,8 @@ export default function App() {
                                 </td>
                                 <td className="py-4 px-4">
                                   {isEditing ? (
-                                    <div className="flex flex-col gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 w-44">
-                                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                                    <div className={IS_APP ? "flex flex-col gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 w-44" : "flex flex-col gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100 w-44"}>
+                                      <label className={IS_APP ? "flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-200" : "flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700"}>
                                         <input 
                                           type="checkbox" 
                                           checked={editHasLeave} 
@@ -2356,11 +2407,11 @@ export default function App() {
                                           value={editLeaveType} 
                                           onChange={(e) => setEditLeaveType(e.target.value)} 
                                           placeholder="نوع الإجازة (مرضية، سنوية...)" 
-                                          className="px-2 py-1 border border-slate-200 rounded text-xs w-full bg-white"
+                                          className={IS_APP ? "px-2 py-1 border border-slate-200 dark:border-slate-700 rounded text-xs w-full bg-white dark:bg-slate-800 dark:text-slate-100" : "px-2 py-1 border border-slate-200 rounded text-xs w-full bg-white"}
                                         />
                                       )}
 
-                                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                                      <label className={IS_APP ? "flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-200" : "flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700"}>
                                         <input 
                                           type="checkbox" 
                                           checked={editHasPermission} 
@@ -2491,21 +2542,104 @@ export default function App() {
           )}
           {/* End main view */}
 
-        </div>
+        </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden">
+      <footer className={IS_APP
+        ? "relative z-10 bg-white dark:bg-transparent border-t border-slate-100 dark:border-white/[0.06] py-6 mt-12 pb-tabbar text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden"
+        : "bg-white border-t border-slate-100 dark:border-slate-800 py-6 mt-12 text-center text-[11px] text-slate-400 dark:text-slate-500 print:hidden"}>
         <div className="max-w-7xl mx-auto px-4">
           <p>{t("footerCopyright")} © {new Date().getFullYear()}</p>
           <p className="mt-1 font-bold text-slate-500 dark:text-slate-400">YAZEED AL-ARAISHA</p>
         </div>
       </footer>
 
+      {/* Bottom Tab Bar (app only) */}
+      {IS_APP && (
+      <nav
+        aria-label={t("appTitle")}
+        className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 print:hidden"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
+      >
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ ...IOS_SPRING, delay: 0.1 }}
+          className="tab-bar flex w-full max-w-md items-stretch gap-1 rounded-[28px] p-1.5"
+        >
+          {([
+            { key: "main", label: t("tabReport"), Icon: FileText },
+            { key: "schedule", label: t("tabSchedule"), Icon: Calendar },
+            { key: "overtime", label: t("tabOvertime"), Icon: Clock },
+          ] as const).map(({ key, label, Icon }) => {
+            const active = viewMode === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => switchView(key)}
+                aria-current={active ? "page" : undefined}
+                className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-[22px] py-2 text-[10.5px] font-bold ${active ? "text-[#B6FF00]" : "text-slate-400 hover:text-slate-200"}`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="tab-pill"
+                    transition={IOS_SPRING}
+                    className="absolute inset-0 rounded-[22px] bg-[#B6FF00]/[0.14] ring-1 ring-inset ring-[#B6FF00]/25"
+                  />
+                )}
+                <motion.span
+                  className="relative"
+                  animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
+                  transition={IOS_SPRING}
+                >
+                  <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.4 : 1.9} />
+                </motion.span>
+                <span className="relative leading-tight">{label}</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              try { navigator.vibrate?.(8); } catch {}
+              if (isAdmin) {
+                if (window.confirm(t("logoutConfirm"))) handleLogout();
+              } else {
+                setShowAdminLogin(true);
+              }
+            }}
+            className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-[22px] py-2 text-[10.5px] font-bold ${isAdmin ? "text-amber-400" : "text-slate-400 hover:text-slate-200"}`}
+          >
+            <span className="relative">
+              {isAdmin ? <User className="h-[22px] w-[22px]" strokeWidth={2.2} /> : <Shield className="h-[22px] w-[22px]" strokeWidth={1.9} />}
+            </span>
+            <span className="relative max-w-[5.5rem] truncate leading-tight">{isAdmin ? authName || t("tabAccount") : t("tabAccount")}</span>
+          </button>
+        </motion.div>
+      </nav>
+      )}
+
       {/* Admin Login Modal */}
+      <AnimatePresence>
       {showAdminLogin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+        <motion.div
+          key="admin-login"
+          initial={IS_APP ? { opacity: 0 } : false}
+          animate={{ opacity: 1 }}
+          exit={IS_APP ? { opacity: 0 } : undefined}
+          transition={{ duration: 0.2 }}
+          className={`fixed inset-0 z-50 flex items-center justify-center ${IS_APP ? "bg-black/60" : "bg-black/50"} backdrop-blur-sm`}
+        >
+          <motion.div
+            initial={IS_APP ? { opacity: 0, scale: 0.92, y: 16 } : false}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={IS_APP ? { opacity: 0, scale: 0.96, y: 8 } : undefined}
+            transition={IOS_SPRING}
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4"
+          >
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                 <Shield className="h-4 w-4 text-amber-600" />
@@ -2541,9 +2675,10 @@ export default function App() {
                 {t("login")}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
     </div>
   );
