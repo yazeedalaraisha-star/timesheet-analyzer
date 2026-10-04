@@ -636,7 +636,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const handleExportImage = async () => {
     if (!gridRef.current) return;
     try {
-      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: (doc) => doc.documentElement.classList.remove("dark") });
       const link = document.createElement("a");
       link.download = `${t("filePrefix")}${selectedDept || ""}_${monthLabel}.png`;
       link.href = canvas.toDataURL("image/png");
@@ -647,7 +647,7 @@ export default function ScheduleManager({ schedules, onUpdate }: Props) {
   const handleExportPDF = async () => {
     if (!gridRef.current) return;
     try {
-      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false });
+      const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", logging: false, onclone: (doc) => doc.documentElement.classList.remove("dark") });
       const { default: jsPDF } = await import("jspdf");
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({

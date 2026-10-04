@@ -1,3 +1,5 @@
+// Must run before any module that captures window.saveAs (jsPDF, SheetJS).
+import './utils/nativeDownloads';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import ErrorBoundary from './ErrorBoundary.tsx';

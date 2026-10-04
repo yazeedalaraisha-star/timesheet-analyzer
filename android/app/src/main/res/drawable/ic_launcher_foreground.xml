@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Sheet -->
+    <path
+        android:fillColor="#00D4FF"
+        android:pathData="M38,28h24l12,12v34a6,6 0,0 1,-6 6h-30a6,6 0,0 1,-6 -6v-40a6,6 0,0 1,6 -6z" />
+    <!-- Folded corner -->
+    <path
+        android:fillColor="#7FE9FF"
+        android:pathData="M62,28l12,12h-8a4,4 0,0 1,-4 -4z" />
+    <!-- Rows -->
+    <path android:fillColor="#0B1F3A" android:pathData="M40,46h20a2,2 0,0 1,0 4h-20a2,2 0,0 1,0 -4z" />
+    <path android:fillColor="#0B1F3A" android:pathData="M40,55h14a2,2 0,0 1,0 4h-14a2,2 0,0 1,0 -4z" />
+    <path android:fillColor="#0B1F3A" android:pathData="M40,64h10a2,2 0,0 1,0 4h-10a2,2 0,0 1,0 -4z" />
+    <!-- Clock badge -->
+    <path
+        android:fillColor="#0B1F3A"
+        android:pathData="M68,66m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="3"
+        android:pathData="M68,66m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M68,60v6l4,3" />
+</vector>

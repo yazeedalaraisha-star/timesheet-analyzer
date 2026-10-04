@@ -20,12 +20,191 @@
   --color-warning: #fdcb6e;
   --color-danger: #e17055;
   --color-info: #74b9ff;
+
+  /* Brand: navy #0B1F3A + cyan #00D4FF */
+  --color-navy: #0B1F3A;
+  --color-cyan: #00D4FF;
+
+  /* Indigo / violet / purple / blue / sky all become the cyan accent. */
+  --color-indigo-50: #e6fbff;
+  --color-indigo-100: #c7f5ff;
+  --color-indigo-200: #94ecff;
+  --color-indigo-300: #5ce1ff;
+  --color-indigo-400: #2ed8ff;
+  --color-indigo-500: #00d4ff;
+  --color-indigo-600: #00c2eb;
+  --color-indigo-700: #00a3c7;
+  --color-indigo-800: #007a96;
+  --color-indigo-900: #00566b;
+  --color-indigo-950: #003645;
+  --color-violet-50: var(--color-indigo-50);
+  --color-violet-100: var(--color-indigo-100);
+  --color-violet-200: var(--color-indigo-200);
+  --color-violet-300: var(--color-indigo-300);
+  --color-violet-400: var(--color-indigo-400);
+  --color-violet-500: var(--color-indigo-500);
+  --color-violet-600: var(--color-indigo-600);
+  --color-violet-700: var(--color-indigo-700);
+  --color-violet-800: var(--color-indigo-800);
+  --color-violet-900: var(--color-indigo-900);
+  --color-violet-950: var(--color-indigo-950);
+  --color-purple-50: var(--color-indigo-50);
+  --color-purple-100: var(--color-indigo-100);
+  --color-purple-200: var(--color-indigo-200);
+  --color-purple-300: var(--color-indigo-300);
+  --color-purple-400: var(--color-indigo-400);
+  --color-purple-500: var(--color-indigo-500);
+  --color-purple-600: var(--color-indigo-600);
+  --color-purple-700: var(--color-indigo-700);
+  --color-purple-800: var(--color-indigo-800);
+  --color-purple-900: var(--color-indigo-900);
+  --color-purple-950: var(--color-indigo-950);
+  --color-blue-50: var(--color-indigo-50);
+  --color-blue-100: var(--color-indigo-100);
+  --color-blue-200: var(--color-indigo-200);
+  --color-blue-300: var(--color-indigo-300);
+  --color-blue-400: var(--color-indigo-400);
+  --color-blue-500: var(--color-indigo-500);
+  --color-blue-600: var(--color-indigo-600);
+  --color-blue-700: var(--color-indigo-700);
+  --color-blue-800: var(--color-indigo-800);
+  --color-blue-900: var(--color-indigo-900);
+  --color-blue-950: var(--color-indigo-950);
 }
 
 /* Custom CSS to handle Right-to-Left (RTL) styling and smooth scroll */
 html {
   direction: rtl;
   scroll-behavior: smooth;
+  background: #06142a;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: #06142a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ───────────── Glassmorphism theme (navy + cyan) ───────────── */
+
+:root.dark {
+  /* Slate is remapped to a navy-glass scale. Scoped to .dark so print
+     and image exports (which drop .dark) keep the stock light palette. 700–900 are translucent "glass" layers and 50–600 are text tints. */
+  --color-slate-50: #f2f8ff;
+  --color-slate-100: #e3eefa;
+  --color-slate-200: #c9d8ec;
+  --color-slate-300: #a5bad5;
+  --color-slate-400: #8299b9;
+  --color-slate-500: #63799a;
+  --color-slate-600: #46607f;
+  --color-slate-700: rgb(255 255 255 / 0.16);
+  --color-slate-800: rgb(255 255 255 / 0.075);
+  --color-slate-900: rgb(14 38 70 / 0.55);
+  --color-slate-950: #06142a;
+}
+
+/* Ambient backdrop: deep navy with soft cyan glows, fixed behind everything. */
+.glass-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 85% -10%, rgb(0 212 255 / 0.22), transparent 60%),
+    radial-gradient(50rem 36rem at -10% 35%, rgb(0 140 255 / 0.16), transparent 60%),
+    radial-gradient(44rem 30rem at 70% 110%, rgb(0 212 255 / 0.12), transparent 60%),
+    linear-gradient(180deg, #0b1f3a 0%, #081a33 45%, #06142a 100%);
+}
+
+/* Cards and panels: frosted glass with a hairline highlight. */
+.dark [class*="rounded-xl"].dark\:bg-slate-900,
+.dark [class*="rounded-2xl"].dark\:bg-slate-900,
+.dark [class*="rounded-3xl"].dark\:bg-slate-900 {
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  border-color: rgb(255 255 255 / 0.09);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 10px 30px -12px rgb(0 0 0 / 0.55);
+}
+
+/* Inputs: lighter glass with a cyan focus ring. */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
+.dark select option {
+  background: #0b1f3a;
+  color: #e3eefa;
+}
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  outline: none;
+  border-color: rgb(0 212 255 / 0.6) !important;
+  box-shadow: 0 0 0 3px rgb(0 212 255 / 0.18);
+}
+
+/* Cyan buttons read best with navy text. */
+.dark .text-white:is(.bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-violet-600, .bg-blue-600, .bg-purple-600) {
+  color: #0b1f3a;
+}
+
+/* iOS-style press feedback on everything tappable. */
+button,
+[role="button"],
+a {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+button:not(:disabled):active,
+[role="button"]:active {
+  transform: scale(0.96);
+}
+
+::selection {
+  background: rgb(0 212 255 / 0.35);
+  color: #ffffff;
+}
+
+/* Thin, unobtrusive scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+/* Bottom tab bar (iPhone-style floating capsule). Opaque enough that content
+   underneath never shows through, while keeping a glass edge. */
+.tab-bar {
+  background: rgb(6 20 42 / 0.97);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.10);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 18px 40px -10px rgb(0 0 0 / 0.75),
+    0 0 0 0.5px rgb(0 0 0 / 0.6);
+}
+
+.pb-tabbar {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 7rem);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @keyframes fade-in-down {
@@ -56,6 +235,11 @@ html {
     -webkit-print-color-adjust: exact !important;
     color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .glass-backdrop,
+  .tab-bar {
+    display: none !important;
   }
 
   body {
@@ -145,7 +329,7 @@ html {
 
 /* Smooth focus outlines for accessibility */
 :focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid #00d4ff;
   outline-offset: 2px;
   border-radius: 4px;
 }

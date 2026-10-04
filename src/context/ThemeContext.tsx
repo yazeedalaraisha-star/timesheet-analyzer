@@ -1,39 +1,29 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, ReactNode } from "react";
 
+// The app ships a single navy/cyan glass theme, so dark mode is always on.
+// Printing temporarily drops it so paper output keeps the light palette.
 interface ThemeContextType {
   dark: boolean;
-  toggle: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextType>({ dark: false, toggle: () => {} });
+const ThemeContext = createContext<ThemeContextType>({ dark: true });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [dark, setDark] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem("app_theme");
-      if (stored) return stored === "dark";
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      return false;
-    }
-  });
-
-  const toggle = () => {
-    const next = !dark;
-    setDark(next);
-    try { localStorage.setItem("app_theme", next ? "dark" : "light"); } catch {}
-  };
-
   useEffect(() => {
-    if (dark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [dark]);
+    const root = document.documentElement;
+    root.classList.add("dark");
+    const beforePrint = () => root.classList.remove("dark");
+    const afterPrint = () => root.classList.add("dark");
+    window.addEventListener("beforeprint", beforePrint);
+    window.addEventListener("afterprint", afterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint);
+      window.removeEventListener("afterprint", afterPrint);
+    };
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ dark, toggle }}>
+    <ThemeContext.Provider value={{ dark: true }}>
       {children}
     </ThemeContext.Provider>
   );
