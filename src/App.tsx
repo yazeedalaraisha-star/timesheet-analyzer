@@ -144,6 +144,8 @@ const compressImage = (file: File, maxWidth = 2400, quality = 0.92): Promise<str
 
 type ViewMode = "main" | "overtime" | "schedule";
 const VIEW_ORDER: ViewMode[] = ["main", "schedule", "overtime"];
+// The Android app only offers the overtime view; report and schedule stay on the website.
+const APP_TABS: ViewMode[] = ["overtime"];
 
 // iOS-like spring used for page and tab transitions.
 const IOS_SPRING = { type: "spring", stiffness: 380, damping: 34, mass: 0.9 } as const;
@@ -180,7 +182,7 @@ export default function App() {
   const [showRawJson, setShowRawJson] = useState<boolean>(false);
 
   // View modes
-  const [viewMode, setViewMode] = useState<ViewMode>("main");
+  const [viewMode, setViewMode] = useState<ViewMode>(IS_APP ? "overtime" : "main");
   const [viewDirection, setViewDirection] = useState(1);
   const switchView = (next: ViewMode) => {
     if (next === viewMode) {
@@ -2573,7 +2575,7 @@ export default function App() {
             { key: "main", label: t("tabReport"), Icon: FileText },
             { key: "schedule", label: t("tabSchedule"), Icon: Calendar },
             { key: "overtime", label: t("tabOvertime"), Icon: Clock },
-          ] as const).map(({ key, label, Icon }) => {
+          ] as const).filter(({ key }) => APP_TABS.includes(key)).map(({ key, label, Icon }) => {
             const active = viewMode === key;
             return (
               <button
@@ -2587,15 +2589,17 @@ export default function App() {
                   <motion.span
                     layoutId="tab-pill"
                     transition={IOS_SPRING}
-                    className="absolute inset-0 rounded-[22px] bg-[#B6FF00]/[0.14] ring-1 ring-inset ring-[#B6FF00]/25"
+                    className="tab-pill-glow absolute inset-0 rounded-[22px] bg-[#B6FF00]/[0.14] ring-1 ring-inset ring-[#B6FF00]/25"
                   />
                 )}
                 <motion.span
                   className="relative"
-                  animate={{ scale: active ? 1.12 : 1, y: active ? -1 : 0 }}
+                  animate={{ scale: active ? 1.12 : 1 }}
                   transition={IOS_SPRING}
                 >
-                  <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.4 : 1.9} />
+                  <span className={`block ${active ? "tab-icon-float" : ""}`}>
+                    <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.4 : 1.9} />
+                  </span>
                 </motion.span>
                 <span className="relative leading-tight">{label}</span>
               </button>

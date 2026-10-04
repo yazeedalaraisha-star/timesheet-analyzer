@@ -138,6 +138,23 @@ html.app-shell body {
     0 10px 30px -12px rgb(0 0 0 / 0.55);
 }
 
+/* Floating layers (dropdowns, autocomplete lists, tooltips, dialog panels) must be
+   solid so whatever sits underneath never shows through and options stay readable. */
+.app-shell.dark .absolute:is([class*="dark:bg-slate-700"], [class*="dark:bg-slate-800"], [class*="dark:bg-slate-900"]),
+.app-shell.dark .fixed:is([class*="dark:bg-slate-700"], [class*="dark:bg-slate-800"], [class*="dark:bg-slate-900"]),
+.app-shell.dark .fixed > :is([class*="dark:bg-slate-800"], [class*="dark:bg-slate-900"]) {
+  background-color: #171717 !important;
+  border-color: rgb(255 255 255 / 0.12) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 18px 40px -12px rgb(0 0 0 / 0.85);
+}
+.app-shell.dark .absolute :is(button, li, [role="option"]):hover {
+  background-color: rgb(182 255 0 / 0.10);
+}
+
 /* Inputs: lighter glass with a lime focus ring. */
 .app-shell.dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .app-shell.dark select,
@@ -206,12 +223,40 @@ html.app-shell body {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* Active tab: a gentle float on the icon and a soft lime breathing glow on the pill. */
+@keyframes tab-icon-float {
+  0%, 100% { transform: translateY(-1px); }
+  50% { transform: translateY(-3.5px); }
+}
+@keyframes tab-pill-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(182 255 0 / 0); }
+  50% { box-shadow: 0 0 18px 1px rgb(182 255 0 / 0.22); }
+}
+.app-shell .tab-icon-float {
+  animation: tab-icon-float 2.6s ease-in-out infinite;
+}
+.app-shell .tab-pill-glow {
+  animation: tab-pill-glow 2.6s ease-in-out infinite;
+}
+
+/* Glass cards create their own stacking context, so lift a card while it holds an
+   open dropdown; otherwise the next card would paint over the list. */
+.app-shell.dark [class*="rounded-xl"]:has(> * .absolute.z-30),
+.app-shell.dark [class*="rounded-2xl"]:has(> * .absolute.z-30) {
+  position: relative;
+  z-index: 30;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-shell *,
   .app-shell *::before,
   .app-shell *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  .app-shell .tab-icon-float,
+  .app-shell .tab-pill-glow {
+    animation: none !important;
   }
 }
 
